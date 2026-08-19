@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-sand: #f7f5ee;
+    --bg-sand-light: #fdfcf9;
+    --bg-sand-card: #f9f7f1;
+    --border-sand: #e6dfd3;
+    --accent-peach: #fcdbc7;
+    --accent-terracotta: #e87a42;
+    --accent-terracotta-dark: #c25925;
+    --olive-slate: #5f6a60;
+    --charcoal-ink: #1e2521;
+  }
+
+  body {
+    background-color: var(--bg-sand);
+    color: var(--charcoal-ink);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+}
+
+/* Custom subtle scrollbar with warm neutral tone */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d8d0c2;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #bfb5a3;
+}
+
+/* Smooth pulse for live radar pins */
+@keyframes map-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(232, 122, 66, 0.5);
+  }
+  70% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 12px rgba(232, 122, 66, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(232, 122, 66, 0);
+  }
+}
+
+.animate-map-pulse {
+  animation: map-pulse 2.4s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+/* Audio waveform animation */
+@keyframes soundwave {
+  0%, 100% { height: 25%; }
+  50% { height: 100%; }
+}
+
+.animate-wave-bar {
+  animation: soundwave 1.2s ease-in-out infinite;
+}
+
+/* Subtle organic bounce entrance for smart folders */
+@keyframes organic-bounce {
+  0% {
+    opacity: 0;
+    transform: scale(0.86) translateY(5px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.035) translateY(-2px);
+  }
+  80% {
+    transform: scale(0.985) translateY(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-organic-bounce {
+  animation: organic-bounce 0.42s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}

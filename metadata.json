@@ -1,0 +1,6 @@
+{
+  "name": "Aura · Organic Next-Gen Messenger",
+  "description": "A versatile, thoughtfully crafted next-gen messenger with warm organic aesthetics, intelligent location dossiers, audio rooms, interactive action modules, and Gemini AI copilots.",
+  "requestFramePermissions": ["microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
