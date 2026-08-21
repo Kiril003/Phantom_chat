@@ -112,10 +112,15 @@ export const CreateChatModal: React.FC<CreateChatModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-[#FAF8F3] border border-[#DCD3C1] rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden select-none animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[88vh]">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
+      <div className="bg-[#FAF8F3] border-t sm:border border-[#DCD3C1] rounded-t-3xl sm:rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden select-none animate-in slide-in-from-bottom sm:zoom-in-95 duration-150 flex flex-col max-h-[92dvh] sm:max-h-[88vh] pb-[var(--sab)] sm:pb-0">
+        {/* Mobile Pull Indicator */}
+        <div className="sm:hidden pt-2.5 pb-1 flex justify-center bg-[#F5EFE4]">
+          <div className="w-12 h-1 bg-[#D5C9B8] rounded-full" />
+        </div>
+
         {/* Header */}
-        <div className="px-5 py-4 border-b border-[#E8DFD1] flex items-center justify-between bg-[#F5EFE4] shrink-0">
+        <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-[#E8DFD1] flex items-center justify-between bg-[#F5EFE4] shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-[#1F2521] text-white flex items-center justify-center font-extrabold text-xs">
               {step}/3

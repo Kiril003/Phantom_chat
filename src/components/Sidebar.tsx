@@ -56,6 +56,7 @@ import {
 } from 'lucide-react';
 import { Chat, ChatCircle, PersonaSphere, SmartFolder, UserProfile } from '../types';
 import { soundFx } from '../utils/sound';
+import { networkEngine } from '../utils/networkEngine';
 import { ShareFolderModal } from './ShareFolderModal';
 import { FolderInsightsModal } from './FolderInsightsModal';
 import { FolderIconPickerModal } from './FolderIconPickerModal';
@@ -83,6 +84,7 @@ interface SidebarProps {
   onNewChat: () => void;
   onOpenUserProfile: () => void;
   onOpenSettings: () => void;
+  onOpenP2PNetworkModal?: () => void;
   onSwitchPersonaSphere?: (sphere: PersonaSphere) => void;
 }
 
@@ -154,6 +156,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewChat,
   onOpenUserProfile,
   onOpenSettings,
+  onOpenP2PNetworkModal,
   onSwitchPersonaSphere,
 }) => {
   const [activeCircle, setActiveCircle] = useState<ChatCircle>('all');
@@ -273,9 +276,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const onlineCount = matchingChats.filter((c) => c.isOnline).length;
 
     let latestTime = 'Немає активності';
-    const activeChat = matchingChats.find((c) => c.messages && c.messages.length > 0);
-    if (activeChat && activeChat.messages) {
-      latestTime = activeChat.messages[activeChat.messages.length - 1].timestamp || 'Сьогодні';
+    const activeChat = matchingChats.find((c) => (c.messages || []).length > 0);
+    if (activeChat && activeChat.messages && activeChat.messages.length > 0) {
+      latestTime = activeChat.messages[activeChat.messages.length - 1]?.timestamp || 'Сьогодні';
     }
 
     const topChats = matchingChats.slice(0, 3);
@@ -365,7 +368,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   // Hover Tooltip Handlers
-  const handleFolderMouseEnter = (e: React.MouseEvent<HTMLDivElement>, folder: SmartFolder) => {
+  const handleFolderMouseEnter = (e: React.MouseEvent<HTMLElement>, folder: SmartFolder) => {
     if (folderContextMenu || draggedChatId || inlineEditingFolderId) return;
 
     const target = e.currentTarget;
@@ -376,8 +379,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     hoverTimeoutRef.current = window.setTimeout(() => {
       const rect = target.getBoundingClientRect();
       const stats = getFolderStatistics(folder);
-      const posX = Math.min(Math.max(rect.left - 10, 10), window.innerWidth - 240);
-      const posY = rect.bottom + 6;
+      const posX = rect.right + 12;
+      const posY = Math.min(Math.max(rect.top - 4, 12), window.innerHeight - 120);
 
       setHoveredFolderStats({
         folder,
@@ -385,7 +388,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         y: posY,
         stats,
       });
-    }, 100);
+    }, 80);
   };
 
   const handleFolderMouseLeave = () => {
@@ -403,24 +406,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setHoveredFolderStats(null);
     soundFx.playTap();
 
-    let clientX = 16;
-    let clientY = 80;
+    const target = e.currentTarget as HTMLElement;
+    const rect = target?.getBoundingClientRect ? target.getBoundingClientRect() : null;
 
-    if ('clientX' in e) {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    } else if ('touches' in e && e.touches.length > 0) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
+    let posX = rect ? rect.right + 10 : 70;
+    let posY = rect ? rect.top : 80;
+
+    if ('clientY' in e && e.clientY) {
+      posY = e.clientY - 30;
     }
 
-    // Keep context menu inside visible boundary
-    const x = Math.min(Math.max(clientX - 40, 10), window.innerWidth - 270);
-    const y = Math.min(Math.max(clientY + 10, 60), window.innerHeight - 380);
+    // Keep context menu inside visible boundary without overflow
+    const menuWidth = 280;
+    const menuHeight = 520;
+    const x = Math.min(Math.max(posX, 12), window.innerWidth - menuWidth - 12);
+    const y = Math.min(Math.max(posY, 12), window.innerHeight - menuHeight - 12);
 
     setFolderContextMenu({ folder, x, y });
     setCustomVibeInput(folder.vibe || '');
     setIsVibePaletteOpen(false);
+    setIsColorPaletteOpen(false);
   };
 
   const handleTouchStart = (e: React.TouchEvent, folder: SmartFolder) => {
@@ -672,378 +677,423 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className="w-80 sm:w-88 md:w-96 flex flex-col h-full bg-[#FAF8F3] border-r border-[#E2D9C8] select-none shrink-0 overflow-hidden relative">
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="absolute top-16 left-3 right-3 z-40 bg-[#1F2521] text-white px-3.5 py-2.5 rounded-2xl shadow-xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-150">
-          <FolderCheck className="w-4 h-4 text-[#E87A42] shrink-0" />
-          <span className="truncate">{toastMessage}</span>
-        </div>
-      )}
-
-      {/* 1. Top Identity & Action Bar */}
-      <div className="p-3.5 border-b border-[#E8DFD1] flex items-center justify-between gap-2 bg-[#F6EFE3]">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-[#1F2521] flex items-center justify-center text-[#FAF8F3] font-black text-sm shadow-2xs shrink-0">
-            A
+    <aside className="flex h-full w-full md:w-auto bg-[#FAF8F5] border-r border-[#E2D9C8] select-none shrink-0 overflow-hidden relative">
+      {/* 0. Left Organic Dark Workspace / Folder Rail (Desktop & Tablet) */}
+      <div className="hidden md:flex w-14 sm:w-16 bg-[#1A221E] flex-col items-center py-3.5 border-r border-[#2A352F] shrink-0 justify-between select-none z-10">
+        {/* Top: Current User Avatar & Workspace Folders */}
+        <div className="flex flex-col items-center gap-3.5 w-full">
+          <div
+            onClick={onOpenUserProfile}
+            className="relative cursor-pointer group"
+            title={`${currentUser.name} (${currentUser.role}) — Профіль`}
+          >
+            <img
+              src={currentUser.avatar}
+              alt={currentUser.name}
+              className="w-10 h-10 rounded-full object-cover ring-2 ring-[#E87A42]/90 group-hover:scale-105 transition-transform shadow-xs"
+            />
+            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#10B981] rounded-full ring-2 ring-[#1A221E]" />
           </div>
-          <div className="min-w-0">
-            <h1 className="font-extrabold text-sm tracking-tight text-[#1F2521] truncate">
-              Aura Messenger
-            </h1>
-            <div className="flex items-center gap-1.5 text-[10px] text-[#717E75]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#528A4B]" />
-              <span className="truncate">Smart Workspaces & Folders</span>
-            </div>
+
+          <div className="w-7 h-px bg-[#2E3A33]" />
+
+          {/* Smart Folders List */}
+          <div className="flex flex-col items-center gap-2.5 w-full overflow-y-auto no-scrollbar max-h-[calc(100vh-210px)] py-1">
+            {/* All Chats button */}
+            <button
+              onClick={() => {
+                soundFx.playTap();
+                onSelectFolder('all');
+              }}
+              onDragOver={(e) => handleDragOverFolder(e, 'all')}
+              onDragLeave={() => handleDragLeaveFolder('all')}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverFolderId(null);
+              }}
+              className="relative group flex items-center justify-center w-full"
+              title="Усі бесіди"
+            >
+              {activeFolderId === 'all' && (
+                <span className="absolute left-0 w-1 h-5 bg-[#E87A42] rounded-r-full" />
+              )}
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black transition-all ${
+                  activeFolderId === 'all'
+                    ? 'bg-[#E87A42] text-white shadow-md scale-105 ring-1 ring-white/30'
+                    : 'bg-[#253029] text-[#97A69C] hover:bg-[#313F36] hover:text-white hover:scale-105'
+                }`}
+              >
+                💬
+              </div>
+            </button>
+
+            {/* Smart Folders */}
+            {smartFolders
+              .filter((f) => !f.isArchived)
+              .map((folder) => {
+                const isActive = activeFolderId === folder.id;
+                const isDragTarget = dragOverFolderId === folder.id;
+                const folderUnread = getFolderUnreadCount(folder);
+
+                return (
+                  <button
+                    key={folder.id}
+                    onClick={() => {
+                      soundFx.playTap();
+                      onSelectFolder(folder.id);
+                    }}
+                    onMouseEnter={(e) => handleFolderMouseEnter(e, folder)}
+                    onMouseLeave={handleFolderMouseLeave}
+                    onTouchStart={(e) => handleTouchStart(e, folder)}
+                    onTouchEnd={handleTouchEnd}
+                    onContextMenu={(e) => openFolderContextMenu(e, folder)}
+                    onDragOver={(e) => handleDragOverFolder(e, folder.id)}
+                    onDragLeave={() => handleDragLeaveFolder(folder.id)}
+                    onDrop={(e) => handleDropOnFolder(e, folder)}
+                    className="relative group flex items-center justify-center w-full"
+                    title={`${folder.name} (${folder.customVibe || 'Папка'})`}
+                  >
+                    {isActive && (
+                      <span
+                        className="absolute left-0 w-1 h-5 rounded-r-full"
+                        style={{ backgroundColor: folder.color || '#E87A42' }}
+                      />
+                    )}
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center text-base transition-all relative ${
+                        isDragTarget
+                          ? 'ring-2 ring-[#E87A42] scale-110 shadow-lg'
+                          : isActive
+                          ? 'shadow-md scale-105 ring-1 ring-white/40'
+                          : 'opacity-85 hover:opacity-100 hover:scale-105'
+                      }`}
+                      style={{
+                        backgroundColor: isActive
+                          ? (folder.color || '#E87A42')
+                          : folder.color
+                          ? `${folder.color}33`
+                          : '#253029',
+                        color: '#FFFFFF',
+                      }}
+                    >
+                      <span>{folder.emoji || '📁'}</span>
+                      {folderUnread > 0 && (
+                        <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-[#E87A42] text-white text-[9px] font-black rounded-full ring-2 ring-[#1A221E]">
+                          {folderUnread}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+
+            {/* Add New Folder */}
+            <button
+              onClick={() => {
+                soundFx.playTap();
+                onOpenCreateFolder();
+              }}
+              className="w-10 h-10 rounded-xl bg-[#253029]/70 hover:bg-[#313F36] text-[#97A69C] hover:text-white flex items-center justify-center transition-all hover:scale-105 shadow-2xs"
+              title="Створити нову папку / простір (+)"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        {/* Bottom: Settings */}
+        <div className="flex flex-col items-center gap-2 pt-2 border-t border-[#2E3A33] w-full">
           <button
             onClick={() => {
               soundFx.playTap();
               onOpenSettings();
             }}
-            className="p-2 bg-white/80 hover:bg-white text-[#4A574E] rounded-xl border border-[#DFD6C5] transition-colors shadow-2xs"
+            className="w-10 h-10 rounded-xl bg-[#253029]/70 hover:bg-[#313F36] text-[#97A69C] hover:text-white flex items-center justify-center transition-all hover:scale-105 shadow-2xs"
             title="Налаштування застосунку"
           >
-            <Settings className="w-4 h-4 text-[#717E75]" />
+            <Settings className="w-4.5 h-4.5" />
           </button>
+        </div>
+      </div>
+
+      {/* Main Chat List Container (Full width on mobile) */}
+      <div className="w-full md:w-80 lg:w-84 flex flex-col h-full bg-[#FAF8F5] min-w-0 overflow-hidden relative">
+        {/* Mobile Top Brand & Quick Actions Header (Mobile only) */}
+        <div className="md:hidden px-4 pt-[calc(var(--sat)+0.65rem)] pb-2.5 bg-[#171E1A] text-white flex items-center justify-between shrink-0 shadow-xs border-b border-[#253029]">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              onClick={onOpenUserProfile}
+              className="relative cursor-pointer shrink-0 active:scale-95 transition-transform"
+              title={`${currentUser.name} — Профіль`}
+            >
+              <img
+                src={currentUser.avatar}
+                alt={currentUser.name}
+                className="w-9 h-9 rounded-full object-cover ring-2 ring-[#E87A42]"
+              />
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#10B981] rounded-full ring-2 ring-[#171E1A]" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-black text-base tracking-tight text-white flex items-center gap-1">
+                  <span>Aura</span>
+                  <Sparkles className="w-3.5 h-3.5 text-[#E87A42]" />
+                </h1>
+                <span className="px-1.5 py-0.2 bg-[#253029] text-[#A2B3A7] rounded-md text-[9px] font-bold">
+                  v2.4
+                </span>
+              </div>
+              <p className="text-[10px] text-[#85978C] font-semibold flex items-center gap-1 leading-none mt-0.5 truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+                <span>{networkEngine.getTransportMode() === 'p2p' ? 'P2P Direct' : networkEngine.getTransportMode() === 'server' ? 'Server WS' : 'Auto Hybrid'}</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onOpenP2PNetworkModal && (
+              <button
+                onClick={() => {
+                  soundFx.playTap();
+                  onOpenP2PNetworkModal();
+                }}
+                className="p-2 text-[#97A69C] hover:text-white hover:bg-[#253029] rounded-xl transition-colors active:scale-90"
+                title="P2P / Серверні протоколи"
+                aria-label="P2P Протоколи"
+              >
+                <Radio className="w-5 h-5 text-[#10B981]" />
+              </button>
+            )}
+            <button
+              onClick={() => {
+                soundFx.playTap();
+                onOpenSettings();
+              }}
+              className="p-2 text-[#97A69C] hover:text-white hover:bg-[#253029] rounded-xl transition-colors active:scale-90"
+              title="Налаштування"
+              aria-label="Налаштування"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => {
+                soundFx.playTap();
+                onNewChat();
+              }}
+              className="p-2 bg-[#E87A42] text-white rounded-xl hover:bg-[#D76931] transition-transform active:scale-90 shadow-xs"
+              title="Новий діалог"
+              aria-label="Створити новий діалог"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Horizontal Smart Folders Bar (Scrollable chips with icons & badges) */}
+        <div className="md:hidden px-3.5 py-2.5 bg-[#FAF8F5] border-b border-[#EAE2D5] flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
+          <button
+            onClick={() => {
+              soundFx.playTap();
+              onSelectFolder('all');
+            }}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap flex items-center gap-1.5 transition-all shrink-0 active:scale-95 ${
+              activeFolderId === 'all'
+                ? 'bg-[#1F2521] text-white shadow-xs'
+                : 'bg-white text-[#4A574E] border border-[#DFD6C5] hover:bg-[#F2EDE4]'
+            }`}
+          >
+            <span>💬</span>
+            <span>Усі</span>
+          </button>
+
+          {smartFolders
+            .filter((f) => !f.isArchived)
+            .map((folder) => {
+              const isActive = activeFolderId === folder.id;
+              const unread = getFolderUnreadCount(folder);
+              return (
+                <button
+                  key={folder.id}
+                  onClick={() => {
+                    soundFx.playTap();
+                    onSelectFolder(folder.id);
+                  }}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap flex items-center gap-1.5 transition-all shrink-0 border active:scale-95 ${
+                    isActive
+                      ? 'text-white shadow-xs'
+                      : 'bg-white text-[#4A574E] border-[#DFD6C5] hover:bg-[#F2EDE4]'
+                  }`}
+                  style={{
+                    backgroundColor: isActive ? (folder.color || '#E87A42') : undefined,
+                    borderColor: isActive ? (folder.color || '#E87A42') : undefined,
+                  }}
+                >
+                  <span>{folder.emoji || '📁'}</span>
+                  <span>{folder.name}</span>
+                  {unread > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                      isActive ? 'bg-white text-[#1F2521]' : 'bg-[#E87A42] text-white'
+                    }`}>
+                      {unread}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
 
           <button
             onClick={() => {
               soundFx.playTap();
-              onNewChat();
+              onOpenCreateFolder();
             }}
-            className="px-2.5 py-1.5 bg-[#E87A42] hover:bg-[#D46B35] text-white rounded-xl font-extrabold text-xs flex items-center gap-1 transition-colors shadow-2xs"
-            title="Створити простір або тему"
+            className="px-3 py-1.5 rounded-xl text-xs font-bold text-[#6B786F] bg-[#F2ECE2] hover:bg-[#E8E0D2] border border-[#DFD6C5] flex items-center gap-1 shrink-0 active:scale-95"
+            title="Створити нову папку"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Новий</span>
+            <span>Папка</span>
           </button>
         </div>
-      </div>
 
-      {/* 2. SMART FOLDERS / WORKSPACES BAR (With Drag & Drop, Hover Stats & Right-Click Context Menu) */}
-      <div className="bg-[#F1E9DC] border-b border-[#E5DAC8] px-2.5 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-        <AnimatePresence initial={false}>
-          {smartFolders
-            .filter((f) => !f.isArchived)
-            .map((folder) => {
-            const isActive = activeFolderId === folder.id;
-            const isDragTarget = dragOverFolderId === folder.id;
-            const folderUnread = getFolderUnreadCount(folder);
-
-            return (
-              <motion.div
-                key={folder.id}
-                initial={{ opacity: 0, scale: 0.86, y: 5 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.82, y: -4 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 440,
-                  damping: 24,
-                  mass: 0.75,
-                }}
-                whileHover={{ scale: 1.025 }}
-                whileTap={{ scale: 0.96 }}
-                layout
-                onContextMenu={(e) => openFolderContextMenu(e, folder)}
-                onTouchStart={(e) => handleTouchStart(e, folder)}
-                onTouchEnd={handleTouchEnd}
-                onMouseEnter={(e) => handleFolderMouseEnter(e, folder)}
-                onMouseLeave={handleFolderMouseLeave}
-                onDragOver={(e) => handleDragOverFolder(e, folder.id)}
-                onDragLeave={() => handleDragLeaveFolder(folder.id)}
-                onDrop={(e) => handleDropOnFolder(e, folder)}
-                onClick={() => {
-                  soundFx.playTap();
-                  onSelectFolder(folder.id);
-                  setHoveredFolderStats(null);
-                }}
-                style={{
-                  borderColor: isDragTarget
-                    ? (folder.color || '#E87A42')
-                    : isActive
-                    ? (folder.color || '#D8CEBC')
-                    : folder.color
-                    ? `${folder.color}55`
-                    : undefined,
-                  boxShadow: isActive && folder.color
-                    ? `0 2px 8px -2px ${folder.color}35`
-                    : undefined,
-                }}
-                className={`smart-folder-item animate-organic-bounce group px-2.5 py-1.5 rounded-xl cursor-pointer transition-colors flex items-center gap-1.5 text-xs whitespace-nowrap relative border select-none ${
-                  isDragTarget
-                    ? 'bg-[#1F2521] text-white scale-105 ring-2 ring-[#E87A42] shadow-md'
-                    : isActive
-                    ? 'bg-white text-[#1F2521] font-bold shadow-xs'
-                    : 'bg-white/50 text-[#5E6B62] hover:bg-white hover:text-[#1F2521] border-transparent hover:border-[#DFD6C5]'
-                }`}
-              >
-              {/* Interactive Folder Avatar Placeholder (Faded opacity if empty, click to change icon/emoji) */}
-              <div className="relative shrink-0 flex items-center justify-center group/avatar">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    soundFx.playTap();
-                    setIconPickerFolder(folder);
-                  }}
-                  title={
-                    chats.filter((c) => isChatInFolder(c, folder)).length === 0
-                      ? `Порожній простір (0 чатів) — натисніть, щоб обрати іконку`
-                      : `Натисніть, щоб обрати органічну іконку простору`
-                  }
-                  className={`w-5 h-5 rounded-lg flex items-center justify-center text-xs shrink-0 transition-all duration-150 hover:scale-115 active:scale-95 shadow-2xs cursor-pointer hover:ring-2 hover:ring-[#E87A42]/50 ${
-                    chats.filter((c) => isChatInFolder(c, folder)).length === 0
-                      ? 'opacity-40 group-hover/avatar:opacity-85 grayscale-40'
-                      : 'opacity-100'
-                  }`}
-                  style={{
-                    backgroundColor: folder.color ? `${folder.color}22` : '#F0E8DC',
-                    color: folder.color || '#1F2521',
-                    border: folder.color ? `1px solid ${folder.color}44` : '1px solid transparent',
-                  }}
-                >
-                  <span className="select-none">{folder.emoji}</span>
-                </button>
-
-                {/* Visual Notification State Badge on Folder Icon */}
-                {folder.isMuted ? (
-                  <span
-                    className="absolute -bottom-1 -right-1 w-3 h-3 bg-[#5F6A60] text-white rounded-full flex items-center justify-center ring-1.5 ring-[#FAF8F3] shadow-2xs pointer-events-none"
-                    title="Сповіщення для цього простору вимкнено"
-                  >
-                    <BellOff className="w-2 h-2 stroke-[2.5]" />
-                  </span>
-                ) : (
-                  <span
-                    className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ring-1 ring-white pointer-events-none"
-                    style={{ backgroundColor: folder.color || '#528A4B' }}
-                    title="Сповіщення активні"
-                  />
-                )}
-              </div>
-              
-              {/* Folder Title or Inline Rename Input Overlay */}
-              {inlineEditingFolderId === folder.id ? (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1 min-w-24"
-                >
-                  <input
-                    type="text"
-                    autoFocus
-                    value={inlineFolderName}
-                    onChange={(e) => setInlineFolderName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleSaveRename(folder.id);
-                      } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        handleCancelRename();
-                      }
-                    }}
-                    onBlur={() => handleSaveRename(folder.id)}
-                    className="px-1.5 py-0.5 text-xs font-bold bg-white text-[#1F2521] border border-[#E87A42] rounded-lg shadow-xs focus:outline-none focus:ring-1 focus:ring-[#E87A42] w-28"
-                    placeholder="Назва..."
-                  />
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 truncate max-w-28">
-                  <span className="truncate">{folder.name}</span>
-                  {folder.isMuted && (
-                    <VolumeX className="w-3 h-3 text-[#8C988E] shrink-0" title="Сповіщення вимкнено" />
-                  )}
-                </div>
-              )}
-
-              {/* Unread Counter Badge (Muted vs Vibrant) */}
-              {folderUnread > 0 && (
-                <span
-                  className={`px-1.5 py-0.2 text-[9px] font-extrabold rounded-full shadow-2xs ${
-                    folder.isMuted
-                      ? 'bg-[#8C988E] text-white/90'
-                      : 'bg-[#E87A42] text-white'
-                  }`}
-                  title={folder.isMuted ? `${folderUnread} непрочитаних (без звуку)` : `${folderUnread} непрочитаних`}
-                >
-                  {folderUnread}
-                </span>
-              )}
-
-              {/* Quick-action button: Toggle Priority View (Only unread conversations in this folder) */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  soundFx.playTap();
-                  if (!isActive) {
-                    onSelectFolder(folder.id);
-                    setShowOnlyUnread(true);
-                    showToast(`⚡ Priority View: тільки бесіди з новими в «${folder.name}»`);
-                  } else {
-                    const nextState = !showOnlyUnread;
-                    setShowOnlyUnread(nextState);
-                    showToast(
-                      nextState
-                        ? `⚡ Priority View: тільки з новими в «${folder.name}»`
-                        : `📁 Показано всі чати в «${folder.name}»`
-                    );
-                  }
-                }}
-                className={`p-0.5 rounded-lg transition-all flex items-center justify-center ${
-                  isActive && showOnlyUnread
-                    ? 'bg-[#E87A42] text-white shadow-2xs scale-105 opacity-100 ring-1 ring-white/50'
-                    : folderUnread > 0
-                    ? 'text-[#E87A42] hover:bg-[#FCE7D8] opacity-90 group-hover:opacity-100'
-                    : 'opacity-0 group-hover:opacity-100 text-[#717E75] hover:text-[#E87A42] hover:bg-[#EAE0D0]'
-                }`}
-                title={
-                  isActive && showOnlyUnread
-                    ? 'Вимкнути Priority View (показати всі)'
-                    : '⚡ Priority View: показати тільки бесіди з новими повідомленнями'
-                }
-              >
-                <Zap className={`w-3 h-3 ${isActive && showOnlyUnread ? 'fill-current' : ''}`} />
-              </button>
-
-              {/* Explicit Folder Settings / Context Menu Trigger Button */}
-              <button
-                type="button"
-                data-action="folder-settings"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  soundFx.playTap();
-                  openFolderContextMenu(e, folder);
-                }}
-                className="folder-settings opacity-0 group-hover:opacity-100 p-0.5 hover:bg-[#EAE0D0] rounded-md text-[#717E75] hover:text-[#1F2521] transition-all cursor-pointer hover:scale-110 active:scale-95"
-                title="Налаштування та меню простору"
-                aria-label="folder-settings"
-              >
-                <MoreVertical className="w-3 h-3" />
-              </button>
-            </motion.div>
-          );
-        })}
-      </AnimatePresence>
-
-        {/* Create new Smart Folder button */}
-        <button
-          onClick={() => {
-            soundFx.playTap();
-            onOpenCreateFolder();
-          }}
-          className="p-1.5 bg-white/70 hover:bg-white text-[#5E6B62] hover:text-[#E87A42] rounded-xl border border-dashed border-[#CFC3B0] transition-colors shadow-2xs shrink-0 flex items-center gap-1 text-xs font-bold"
-          title="Створити новий Workspace або розумну папку"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span className="text-[11px] pr-1">Папка</span>
-        </button>
-      </div>
-
-      {/* Drag-and-drop helper tip (visible when dragging) */}
-      {draggedChatId && (
-        <div className="bg-[#E87A42] text-white px-3 py-1.5 text-[11px] font-bold flex items-center justify-between animate-pulse">
-          <div className="flex items-center gap-1.5">
-            <GripVertical className="w-3.5 h-3.5" />
-            <span>Перетягніть у потрібну папку вгорі 👆</span>
+        {/* Toast Notification Banner */}
+        {toastMessage && (
+          <div className="absolute top-16 left-3 right-3 z-40 bg-[#1F2521] text-white px-3.5 py-2.5 rounded-2xl shadow-xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-150">
+            <FolderCheck className="w-4 h-4 text-[#EA7A24] shrink-0" />
+            <span className="truncate">{toastMessage}</span>
           </div>
-          <span className="text-[10px] opacity-80">Відпустіть для додавання</span>
-        </div>
-      )}
+        )}
 
-      {/* Active Folder Vibe & Focus Banner */}
-      {currentFolder.vibe && (
-        <div className="px-3 py-1.5 bg-[#FAF3E8] border-b border-[#EAE0D0] flex items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span
-              className="w-2 h-2 rounded-full shrink-0"
-              style={{ backgroundColor: currentFolder.color || '#E87A42' }}
-            />
-            <span className="font-bold text-[11px] text-[#5C4524] truncate">
-              {currentFolder.vibe}
-            </span>
+        {/* 1. Folder Header and Action (Desktop) */}
+        <div className="hidden md:flex px-3.5 py-3 border-b border-[#EAE2D5] items-center justify-between gap-2 bg-[#FAF8F5]">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xl shrink-0">{currentFolder.emoji || '💬'}</span>
+            <div className="min-w-0">
+              <h2 className="font-extrabold text-sm tracking-tight text-[#1C2620] truncate">
+                {currentFolder.name}
+              </h2>
+              <p className="text-[10px] text-[#728178] font-medium truncate">
+                {filteredChats.length} {filteredChats.length === 1 ? 'чат' : filteredChats.length < 5 ? 'чати' : 'чатів'}
+                {totalUnread > 0 && ` • ${totalUnread} нових`}
+              </p>
+            </div>
           </div>
-          <button
-            onClick={(e) => openFolderContextMenu(e, currentFolder)}
-            className="text-[10px] font-extrabold text-[#E87A42] hover:underline flex items-center gap-0.5 shrink-0"
-          >
-            <Sparkles className="w-2.5 h-2.5" />
-            <span>Змінити vibe</span>
-          </button>
-        </div>
-      )}
 
-      {/* 3. Search & Unread Filter Box */}
-      <div className="px-3 pt-2.5 pb-2 space-y-2">
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 text-[#8C988E] absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Пошук людей, тем, задач та файлів..."
-            className="w-full pl-8 pr-8 py-1.5 bg-white border border-[#DFD6C5] rounded-xl text-xs text-[#1F2521] placeholder-[#8C988E] focus:outline-none focus:border-[#E87A42] transition-colors shadow-2xs"
-          />
-          {searchQuery && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {currentFolder.id !== 'all' && !currentFolder.isBuiltIn && (
+              <button
+                onClick={() => onOpenEditFolder(currentFolder)}
+                className="p-1.5 text-[#6F7C73] hover:text-[#1C2620] hover:bg-[#EFE9DF] rounded-xl transition-colors"
+                title="Налаштувати папку"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between text-[11px] px-1 text-[#6F7C73]">
-          <span className="font-bold text-[10px] text-[#717E75] uppercase tracking-wider">
-            {currentFolder.name} ({filteredChats.length})
-          </span>
-          {totalUnread > 0 && (
-            <button
-              onClick={() => setShowOnlyUnread(!showOnlyUnread)}
-              className={`px-2 py-0.5 rounded-full font-bold text-[10px] transition-colors ${
-                showOnlyUnread
-                  ? 'bg-[#E87A42] text-white'
-                  : 'bg-[#FCE7D8] text-[#8C461A] hover:bg-[#F9CCA8]'
-              }`}
-            >
-              {totalUnread} нових
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* 4. Circles Sub-Filter Bar */}
-      <div className="px-3 py-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b border-[#E8DFD1] text-xs font-semibold">
-        {circlesConfig.map((circle) => {
-          const isActive = activeCircle === circle.id;
-          return (
-            <button
-              key={circle.id}
               onClick={() => {
                 soundFx.playTap();
-                setActiveCircle(circle.id);
+                onNewChat();
               }}
-              className={`px-2 py-0.5 rounded-lg transition-all whitespace-nowrap flex items-center gap-1 text-[11px] ${
-                isActive
-                  ? 'bg-[#1F2521] text-white shadow-2xs font-bold'
+              className="p-1.5 text-white bg-[#E87A42] hover:bg-[#D76931] rounded-xl transition-transform active:scale-95 shadow-2xs flex items-center gap-1 text-xs font-bold px-2.5"
+              title="Новий діалог"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline text-[11px]">Новий</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Drag-and-drop helper tip (visible when dragging) */}
+        {draggedChatId && (
+          <div className="bg-[#E87A42] text-white px-3 py-1.5 text-[11px] font-bold flex items-center justify-between animate-pulse">
+            <div className="flex items-center gap-1.5">
+              <GripVertical className="w-3.5 h-3.5" />
+              <span>Перетягніть у потрібну папку на лівій панелі 👈</span>
+            </div>
+            <span className="text-[10px] opacity-80">Відпустіть для додавання</span>
+          </div>
+        )}
+
+        {/* 2. Search & Quick Filters */}
+        <div className="px-3 pt-2.5 pb-1.5 space-y-2 border-b border-[#EAE2D5]/70 bg-[#FAF8F5]">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-[#8C988E] absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Пошук людей, тем, повідомлень..."
+              className="w-full pl-8 pr-8 py-1.5 bg-white border border-[#DFD6C5] rounded-xl text-xs text-[#1F2521] placeholder-[#8C988E] focus:outline-none focus:border-[#E87A42] transition-colors shadow-2xs"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Clean Filter Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs font-medium pb-1">
+            <button
+              onClick={() => {
+                soundFx.playTap();
+                setActiveCircle('all');
+                setShowOnlyUnread(false);
+              }}
+              className={`px-2.5 py-1 rounded-lg transition-all text-[11px] whitespace-nowrap ${
+                activeCircle === 'all' && !showOnlyUnread
+                  ? 'bg-[#1F2521] text-white font-bold shadow-2xs'
                   : 'bg-[#F2EDE4] text-[#4F5B52] hover:bg-[#E8DFD0] border border-[#DFD6C5]'
               }`}
             >
-              <span>{circle.emoji}</span>
-              <span>{circle.label}</span>
+              Всі
             </button>
-          );
-        })}
-      </div>
+            {totalUnread > 0 && (
+              <button
+                onClick={() => {
+                  soundFx.playTap();
+                  setShowOnlyUnread(!showOnlyUnread);
+                }}
+                className={`px-2.5 py-1 rounded-lg transition-all text-[11px] whitespace-nowrap flex items-center gap-1 ${
+                  showOnlyUnread
+                    ? 'bg-[#E87A42] text-white font-bold shadow-2xs'
+                    : 'bg-[#FCE7D8] text-[#8C461A] hover:bg-[#F9CCA8]'
+                }`}
+              >
+                <span>Непрочитані</span>
+                <span className={`px-1 py-0.2 rounded-full text-[9px] font-black ${showOnlyUnread ? 'bg-white text-[#E87A42]' : 'bg-[#E87A42] text-white'}`}>
+                  {totalUnread}
+                </span>
+              </button>
+            )}
+            {circlesConfig.filter((c) => c.id !== 'all').map((circle) => {
+              const isActive = activeCircle === circle.id && !showOnlyUnread;
+              return (
+                <button
+                  key={circle.id}
+                  onClick={() => {
+                    soundFx.playTap();
+                    setActiveCircle(circle.id);
+                    setShowOnlyUnread(false);
+                  }}
+                  className={`px-2 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1 text-[11px] ${
+                    isActive
+                      ? 'bg-[#1F2521] text-white shadow-2xs font-bold'
+                      : 'bg-[#F2EDE4] text-[#4F5B52] hover:bg-[#E8DFD0] border border-[#DFD6C5]'
+                  }`}
+                >
+                  <span>{circle.emoji}</span>
+                  <span>{circle.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-      {/* 5. Chats List (Draggable Items) */}
-      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
+        {/* 3. Chats List (Draggable Items) */}
+        <div className="flex-1 overflow-y-auto px-2 sm:px-2 py-2 space-y-1 pb-24 md:pb-3">
         {filteredChats.length === 0 ? (
           <div className="py-12 text-center text-xs text-[#7A877E] space-y-2 px-4">
             <div className="w-12 h-12 rounded-2xl bg-[#F0E8DC] text-2xl flex items-center justify-center mx-auto shadow-2xs">
@@ -1073,7 +1123,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ) : (
           filteredChats.map((chat) => {
             const isSelected = chat.id === activeChatId;
-            const lastMsg = chat.messages?.[chat.messages.length - 1];
+            const msgs = chat.messages || [];
+            const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : undefined;
             const isDraggingThis = draggedChatId === chat.id;
 
             return (
@@ -1104,15 +1155,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <GripVertical className="w-3.5 h-3.5" />
                 </div>
 
-                {/* Avatar with Online Badge */}
+                {/* Avatar with Real Photo & Online Badge */}
                 <div className="relative shrink-0">
                   <img
                     src={chat.avatar}
                     alt={chat.title}
-                    className="w-11 h-11 rounded-2xl object-cover ring-1 ring-[#FAF8F3]"
+                    className="w-11 h-11 rounded-2xl object-cover ring-1 ring-[#DFD6C5] shadow-2xs group-hover:scale-102 transition-transform"
                   />
                   {chat.isOnline && (
-                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-[#528A4B] rounded-full ring-2 ring-white" />
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-[#10B981] rounded-full ring-2 ring-white" />
                   )}
                   {chat.isForum && (
                     <span className="absolute -top-1 -right-1 bg-[#1F2521] text-white p-0.5 rounded-md text-[8px] shadow-2xs">
@@ -1139,10 +1190,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                   </div>
 
-                  {/* Last message preview snippet */}
+                  {/* Last message or Draft preview snippet */}
                   <div className="flex items-center justify-between gap-1">
                     <p className="text-[11px] text-[#5E6B62] truncate">
-                      {lastMsg?.type === 'table' ? (
+                      {chat.draft ? (
+                        <span>
+                          <span className="text-[#C45318] font-bold">Чернетка: </span>
+                          <span className="text-[#6F7C73] italic">{chat.draft}</span>
+                        </span>
+                      ) : lastMsg?.type === 'table' ? (
                         <span className="text-[#C45318] font-semibold">📊 Таблиця: {lastMsg.tableData?.title}</span>
                       ) : lastMsg?.type === 'chart' ? (
                         <span className="text-[#2E6B27] font-semibold">📈 Графік: {lastMsg.chartData?.title}</span>
@@ -1259,6 +1315,70 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })
         )}
+
+        {/* Mobile Floating Action Button (FAB) for starting a new chat */}
+        <button
+          onClick={() => {
+            soundFx.playTap();
+            onNewChat();
+          }}
+          className="md:hidden fixed bottom-18 right-4 w-13 h-13 bg-[#E87A42] hover:bg-[#D76931] text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 z-25 transition-transform border-2 border-white"
+          title="Новий діалог"
+          aria-label="Новий діалог"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+
+        {/* Mobile Bottom Navigation Bar */}
+        <nav className="md:hidden border-t border-[#EAE2D5] bg-white/95 backdrop-blur-md px-3 pt-2 pb-[calc(var(--sab)+0.5rem)] flex items-center justify-around shrink-0 z-10 shadow-md">
+          <button
+            onClick={() => {
+              soundFx.playTap();
+              onSelectFolder('all');
+            }}
+            className={`flex flex-col items-center gap-0.5 text-[10px] font-bold transition-colors active:scale-95 ${
+              activeFolderId === 'all' ? 'text-[#E87A42]' : 'text-[#728178] hover:text-[#1F2521]'
+            }`}
+          >
+            <MessagesSquare className="w-5 h-5" />
+            <span>Чати</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundFx.playTap();
+              onOpenCreateFolder();
+            }}
+            className="flex flex-col items-center gap-0.5 text-[10px] font-bold text-[#728178] hover:text-[#1F2521] transition-colors active:scale-95"
+          >
+            <FolderPlus className="w-5 h-5" />
+            <span>Простори</span>
+          </button>
+
+          {onOpenP2PNetworkModal && (
+            <button
+              onClick={() => {
+                soundFx.playTap();
+                onOpenP2PNetworkModal();
+              }}
+              className="flex flex-col items-center gap-0.5 text-[10px] font-bold text-[#728178] hover:text-[#1F2521] transition-colors active:scale-95"
+            >
+              <Radio className="w-5 h-5 text-[#10B981]" />
+              <span>P2P Вузол</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              soundFx.playTap();
+              onOpenSettings();
+            }}
+            className="flex flex-col items-center gap-0.5 text-[10px] font-bold text-[#728178] hover:text-[#1F2521] transition-colors active:scale-95"
+          >
+            <Settings className="w-5 h-5" />
+            <span>Параметри</span>
+          </button>
+        </nav>
       </div>
 
       {/* 6. HOVER TOOLTIP FOR SMART FOLDERS (.smart-folder-item) */}
@@ -1313,7 +1433,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div
           ref={contextMenuRef}
           onClick={(e) => e.stopPropagation()}
-          className="fixed z-50 w-64 bg-white border border-[#DFD6C5] rounded-2xl shadow-2xl p-1.5 space-y-1 animate-in fade-in slide-in-from-left-4 duration-200 ease-out text-[#1F2521]"
+          className="fixed z-50 w-72 max-h-[calc(100vh-28px)] overflow-y-auto no-scrollbar bg-white/98 backdrop-blur-md border border-[#DFD6C5] rounded-2xl shadow-2xl p-1.5 space-y-1.5 animate-in fade-in slide-in-from-left-2 duration-150 ease-out text-[#1F2521] select-none"
           style={{
             top: folderContextMenu.y,
             left: folderContextMenu.x,
@@ -1322,211 +1442,218 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Menu Header with Folder Info */}
           <div className="px-2.5 py-2 border-b border-[#F2ECE2] flex items-center justify-between bg-[#FAF8F3] rounded-xl">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-base">{folderContextMenu.folder.emoji}</span>
+              <span className="text-base shrink-0">{folderContextMenu.folder.emoji}</span>
               <div className="min-w-0">
                 <h4 className="font-extrabold text-xs text-[#1F2521] truncate">
                   {folderContextMenu.folder.name}
                 </h4>
                 <p className="text-[10px] text-[#717E75] truncate">
-                  {folderContextMenu.folder.vibe || 'Smart Workspace'}
+                  {folderContextMenu.folder.vibe || 'Розумний простір'}
                 </p>
               </div>
             </div>
             <span
-              className="w-2.5 h-2.5 rounded-full shrink-0"
+              className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-black/10"
               style={{ backgroundColor: folderContextMenu.folder.color || '#E87A42' }}
             />
           </div>
 
-          {/* Action 1: Mark all as read */}
-          <button
-            onClick={() => handleMarkAllAsReadAction(folderContextMenu.folder)}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <CheckCheck className="w-3.5 h-3.5 text-[#528A4B]" />
-              <span>Позначити всі як прочитані</span>
+          {/* Section 1: Actions */}
+          <div className="space-y-0.5">
+            <div className="px-2 py-0.5 text-[9px] font-extrabold text-[#8C988E] uppercase tracking-wider">
+              Основні дії
             </div>
-            {getFolderUnreadCount(folderContextMenu.folder) > 0 && (
-              <span className="px-1.5 py-0.2 bg-[#E87A42] text-white text-[9px] font-extrabold rounded-full">
-                {getFolderUnreadCount(folderContextMenu.folder)}
-              </span>
-            )}
-          </button>
 
-          {/* Action: Priority View for this folder */}
-          <button
-            onClick={() => {
-              const f = folderContextMenu.folder;
-              setFolderContextMenu(null);
-              onSelectFolder(f.id);
-              setShowOnlyUnread(true);
-              soundFx.playTap();
-              showToast(`⚡ Priority View: тільки бесіди з новими в «${f.name}»`);
-            }}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Zap className="w-3.5 h-3.5 text-[#E87A42]" />
-              <span>Priority View (тільки нові)</span>
-            </div>
-            {getFolderUnreadCount(folderContextMenu.folder) > 0 && (
-              <span className="px-1.5 py-0.2 bg-[#E87A42] text-white text-[9px] font-extrabold rounded-full">
-                {getFolderUnreadCount(folderContextMenu.folder)}
-              </span>
-            )}
-          </button>
-
-          {/* Action: Quick Preview (Last 3 messages from most recent chat) */}
-          <button
-            onClick={() => handleOpenQuickPreview(folderContextMenu.folder)}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Eye className="w-3.5 h-3.5 text-[#528A4B]" />
-              <span>Швидкий перегляд (3 ост. пов.)</span>
-            </div>
-            <span className="text-[10px] text-[#717E75] font-mono">
-              Останній чат
-            </span>
-          </button>
-
-          {/* Action 2: Toggle Notifications (Mute / Unmute) */}
-          <button
-            onClick={() => handleToggleMuteAction(folderContextMenu.folder)}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              {folderContextMenu.folder.isMuted ? (
-                <Bell className="w-3.5 h-3.5 text-[#528A4B]" />
-              ) : (
-                <BellOff className="w-3.5 h-3.5 text-[#E87A42]" />
-              )}
-              <span>
-                {folderContextMenu.folder.isMuted
-                  ? 'Увімкнути сповіщення (Unmute)'
-                  : 'Вимкнути сповіщення (Toggle Notifications)'}
-              </span>
-            </div>
-            <span
-              className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                folderContextMenu.folder.isMuted
-                  ? 'bg-[#8C988E]/15 text-[#717E75]'
-                  : 'bg-[#528A4B]/15 text-[#528A4B]'
-              }`}
+            {/* Mark all as read */}
+            <button
+              onClick={() => handleMarkAllAsReadAction(folderContextMenu.folder)}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
             >
-              {folderContextMenu.folder.isMuted ? '🔕 Muted' : '🔔 Active'}
-            </span>
-          </button>
+              <div className="flex items-center gap-2 min-w-0">
+                <CheckCheck className="w-3.5 h-3.5 text-[#528A4B] shrink-0" />
+                <span className="truncate">Позначити як прочитані</span>
+              </div>
+              {getFolderUnreadCount(folderContextMenu.folder) > 0 && (
+                <span className="px-1.5 py-0.2 bg-[#E87A42] text-white text-[9px] font-extrabold rounded-full shrink-0">
+                  {getFolderUnreadCount(folderContextMenu.folder)}
+                </span>
+              )}
+            </button>
 
-          {/* Action 3: Set Folder Accent Color (Dedicated Color Picker) */}
-          <div className="border-t border-[#F2ECE2] pt-1">
+            {/* Priority View for this folder */}
             <button
               onClick={() => {
-                setIsColorPaletteOpen(!isColorPaletteOpen);
-                setIsVibePaletteOpen(false);
+                const f = folderContextMenu.folder;
+                setFolderContextMenu(null);
+                onSelectFolder(f.id);
+                setShowOnlyUnread(true);
+                soundFx.playTap();
+                showToast(`⚡ Priority View: тільки бесіди з новими в «${f.name}»`);
               }}
               className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
             >
-              <div className="flex items-center gap-2">
-                <Palette className="w-3.5 h-3.5 text-[#E87A42]" />
-                <span>Колірний акцент</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <Zap className="w-3.5 h-3.5 text-[#E87A42] shrink-0" />
+                <span className="truncate">Priority View (лише нові)</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span
-                  className="w-3 h-3 rounded-full border border-black/10 shadow-2xs shrink-0"
-                  style={{ backgroundColor: folderContextMenu.folder.color || '#E87A42' }}
-                />
-                <ChevronDown
-                  className={`w-3 h-3 text-[#717E75] transition-transform ${
-                    isColorPaletteOpen ? 'rotate-180' : ''
-                  }`}
-                />
-              </div>
+              {getFolderUnreadCount(folderContextMenu.folder) > 0 && (
+                <span className="px-1.5 py-0.2 bg-[#E87A42] text-white text-[9px] font-extrabold rounded-full shrink-0">
+                  {getFolderUnreadCount(folderContextMenu.folder)}
+                </span>
+              )}
             </button>
 
-            {isColorPaletteOpen && (
-              <div className="p-2 bg-[#FAF8F3] rounded-xl mt-1 space-y-2 border border-[#EAE0D0] animate-in fade-in slide-in-from-top-1 duration-150">
-                <div className="flex items-center justify-between text-[10px] font-bold text-[#717E75]">
-                  <span>Палітра відтінків:</span>
-                  <span
-                    className="font-mono text-[9px] px-1.5 py-0.2 rounded bg-white border border-[#DFD6C5] font-bold"
-                    style={{ color: folderContextMenu.folder.color || '#E87A42' }}
-                  >
-                    {folderContextMenu.folder.color || '#E87A42'}
-                  </span>
-                </div>
-
-                {/* Color swatches */}
-                <div className="grid grid-cols-4 gap-1.5">
-                  {colorPalette.map((c) => {
-                    const isSelected = folderContextMenu.folder.color === c.hex;
-                    return (
-                      <button
-                        key={c.hex}
-                        type="button"
-                        onClick={() => handleSetColorAction(folderContextMenu.folder, c.hex)}
-                        className={`h-6 rounded-lg flex items-center justify-center transition-all ${
-                          isSelected
-                            ? 'ring-2 ring-[#1F2521] scale-105 shadow-xs font-bold text-white'
-                            : 'hover:scale-105 hover:shadow-2xs'
-                        }`}
-                        style={{ backgroundColor: c.hex }}
-                        title={c.label}
-                      >
-                        {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Custom Color Input */}
-                <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#EAE0D0]">
-                  <label
-                    htmlFor="folder-custom-color"
-                    className="text-[10px] font-bold text-[#5E6B62] flex items-center gap-1 cursor-pointer flex-1"
-                  >
-                    <Pipette className="w-3 h-3 text-[#717E75]" />
-                    <span>Свій відтінок:</span>
-                  </label>
-                  <input
-                    id="folder-custom-color"
-                    type="color"
-                    value={folderContextMenu.folder.color || '#E87A42'}
-                    onChange={(e) => handleSetColorAction(folderContextMenu.folder, e.target.value)}
-                    className="w-8 h-6 p-0 border border-[#DFD6C5] rounded-md cursor-pointer bg-transparent"
-                    title="Обрати довільний колір"
-                  />
-                </div>
+            {/* Quick Preview (Last 3 messages from most recent chat) */}
+            <button
+              onClick={() => handleOpenQuickPreview(folderContextMenu.folder)}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Eye className="w-3.5 h-3.5 text-[#528A4B] shrink-0" />
+                <span className="truncate">Швидкий перегляд (3 ост.)</span>
               </div>
-            )}
+              <span className="text-[10px] text-[#717E75] font-mono shrink-0 whitespace-nowrap">
+                Останній чат
+              </span>
+            </button>
+
+            {/* Toggle Notifications (Mute / Unmute) */}
+            <button
+              onClick={() => handleToggleMuteAction(folderContextMenu.folder)}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {folderContextMenu.folder.isMuted ? (
+                  <Bell className="w-3.5 h-3.5 text-[#528A4B] shrink-0" />
+                ) : (
+                  <BellOff className="w-3.5 h-3.5 text-[#E87A42] shrink-0" />
+                )}
+                <span className="truncate">
+                  {folderContextMenu.folder.isMuted ? 'Увімкнути звук' : 'Вимкнути звук'}
+                </span>
+              </div>
+              <span
+                className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded shrink-0 whitespace-nowrap ${
+                  folderContextMenu.folder.isMuted
+                    ? 'bg-[#8C988E]/15 text-[#717E75]'
+                    : 'bg-[#528A4B]/15 text-[#528A4B]'
+                }`}
+              >
+                {folderContextMenu.folder.isMuted ? '🔕 Muted' : '🔔 Active'}
+              </span>
+            </button>
           </div>
 
-          {/* Action 4: Set Folder Vibe Presets */}
-          <div>
-            <button
-              onClick={() => {
-                setIsVibePaletteOpen(!isVibePaletteOpen);
-                setIsColorPaletteOpen(false);
-              }}
-              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-[#528A4B]" />
-                <span>Налаштувати Vibe</span>
-              </div>
-              <ChevronDown
-                className={`w-3 h-3 text-[#717E75] transition-transform ${
-                  isVibePaletteOpen ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
+          {/* Section 2: Style & Customization */}
+          <div className="border-t border-[#F2ECE2] pt-1 space-y-0.5">
+            <div className="px-2 py-0.5 text-[9px] font-extrabold text-[#8C988E] uppercase tracking-wider">
+              Стиль & Персоналізація
+            </div>
 
-            {isVibePaletteOpen && (
-              <div className="p-2 bg-[#FAF8F3] rounded-xl mt-1 space-y-2 border border-[#EAE0D0] animate-in fade-in slide-in-from-top-1 duration-150">
-                {/* Vibe Presets */}
-                <div>
-                  <label className="block text-[10px] font-bold text-[#717E75] mb-1">
+            {/* Set Folder Accent Color */}
+            <div>
+              <button
+                onClick={() => {
+                  setIsColorPaletteOpen(!isColorPaletteOpen);
+                  setIsVibePaletteOpen(false);
+                }}
+                className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Palette className="w-3.5 h-3.5 text-[#E87A42] shrink-0" />
+                  <span className="truncate">Колірний акцент</span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span
+                    className="w-3 h-3 rounded-full border border-black/10 shadow-2xs"
+                    style={{ backgroundColor: folderContextMenu.folder.color || '#E87A42' }}
+                  />
+                  <ChevronDown
+                    className={`w-3 h-3 text-[#717E75] transition-transform ${
+                      isColorPaletteOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </div>
+              </button>
+
+              {isColorPaletteOpen && (
+                <div className="p-2 bg-[#FAF8F3] rounded-xl mt-1 space-y-2 border border-[#EAE0D0] animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-[#717E75]">
+                    <span>Палітра:</span>
+                    <span
+                      className="font-mono text-[9px] px-1.5 py-0.2 rounded bg-white border border-[#DFD6C5] font-bold"
+                      style={{ color: folderContextMenu.folder.color || '#E87A42' }}
+                    >
+                      {folderContextMenu.folder.color || '#E87A42'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {colorPalette.map((c) => {
+                      const isSelected = folderContextMenu.folder.color === c.hex;
+                      return (
+                        <button
+                          key={c.hex}
+                          type="button"
+                          onClick={() => handleSetColorAction(folderContextMenu.folder, c.hex)}
+                          className={`h-6 rounded-lg flex items-center justify-center transition-all ${
+                            isSelected
+                              ? 'ring-2 ring-[#1F2521] scale-105 shadow-xs font-bold text-white'
+                              : 'hover:scale-105 hover:shadow-2xs'
+                          }`}
+                          style={{ backgroundColor: c.hex }}
+                          title={c.label}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#EAE0D0]">
+                    <label
+                      htmlFor="folder-custom-color"
+                      className="text-[10px] font-bold text-[#5E6B62] flex items-center gap-1 cursor-pointer flex-1"
+                    >
+                      <Pipette className="w-3 h-3 text-[#717E75]" />
+                      <span>Свій відтінок:</span>
+                    </label>
+                    <input
+                      id="folder-custom-color"
+                      type="color"
+                      value={folderContextMenu.folder.color || '#E87A42'}
+                      onChange={(e) => handleSetColorAction(folderContextMenu.folder, e.target.value)}
+                      className="w-8 h-6 p-0 border border-[#DFD6C5] rounded-md cursor-pointer bg-transparent"
+                      title="Обрати довільний колір"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Set Folder Vibe Presets */}
+            <div>
+              <button
+                onClick={() => {
+                  setIsVibePaletteOpen(!isVibePaletteOpen);
+                  setIsColorPaletteOpen(false);
+                }}
+                className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Sparkles className="w-3.5 h-3.5 text-[#528A4B] shrink-0" />
+                  <span className="truncate">Налаштувати Vibe</span>
+                </div>
+                <ChevronDown
+                  className={`w-3 h-3 text-[#717E75] transition-transform shrink-0 ${
+                    isVibePaletteOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {isVibePaletteOpen && (
+                <div className="p-2 bg-[#FAF8F3] rounded-xl mt-1 space-y-2 border border-[#EAE0D0] animate-in fade-in slide-in-from-top-1 duration-150">
+                  <label className="block text-[10px] font-bold text-[#717E75]">
                     Швидкі пресети:
                   </label>
                   <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
@@ -1540,184 +1667,195 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </button>
                     ))}
                   </div>
-                </div>
 
-                {/* Custom Vibe text input */}
-                <div className="flex gap-1 pt-1">
-                  <input
-                    type="text"
-                    value={customVibeInput}
-                    onChange={(e) => setCustomVibeInput(e.target.value)}
-                    placeholder="Власний vibe..."
-                    className="flex-1 px-2 py-1 text-[11px] bg-white border border-[#DFD6C5] rounded-lg text-[#1F2521] placeholder-[#8C988E] focus:outline-none focus:border-[#E87A42]"
-                  />
-                  <button
-                    onClick={() => handleSetVibeAction(folderContextMenu.folder, customVibeInput)}
-                    disabled={!customVibeInput.trim()}
-                    className="px-2 py-1 bg-[#E87A42] hover:bg-[#D46B35] disabled:opacity-50 text-white text-[10px] font-bold rounded-lg transition-colors"
-                  >
-                    ОК
-                  </button>
+                  <div className="flex gap-1 pt-1">
+                    <input
+                      type="text"
+                      value={customVibeInput}
+                      onChange={(e) => setCustomVibeInput(e.target.value)}
+                      placeholder="Власний vibe..."
+                      className="flex-1 px-2 py-1 text-[11px] bg-white border border-[#DFD6C5] rounded-lg text-[#1F2521] placeholder-[#8C988E] focus:outline-none focus:border-[#E87A42]"
+                    />
+                    <button
+                      onClick={() => handleSetVibeAction(folderContextMenu.folder, customVibeInput)}
+                      disabled={!customVibeInput.trim()}
+                      className="px-2 py-1 bg-[#E87A42] hover:bg-[#D46B35] disabled:opacity-50 text-white text-[10px] font-bold rounded-lg transition-colors shrink-0"
+                    >
+                      ОК
+                    </button>
+                  </div>
                 </div>
+              )}
+            </div>
+
+            {/* Choose Folder Icon & Emoji */}
+            <button
+              onClick={() => {
+                const f = folderContextMenu.folder;
+                setFolderContextMenu(null);
+                setIconPickerFolder(f);
+                soundFx.playTap();
+              }}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Smile className="w-3.5 h-3.5 text-[#E87A42] shrink-0" />
+                <span className="truncate">Змінити Emoji</span>
+              </div>
+              <span className="text-xs font-bold px-1.5 py-0.2 rounded bg-[#F0E8DC] border border-[#DFD6C5] shrink-0">
+                {folderContextMenu.folder.emoji}
+              </span>
+            </button>
+          </div>
+
+          {/* Section 3: Tools & Sharing */}
+          <div className="border-t border-[#F2ECE2] pt-1 space-y-0.5">
+            <div className="px-2 py-0.5 text-[9px] font-extrabold text-[#8C988E] uppercase tracking-wider">
+              Інструменти & Шеринг
+            </div>
+
+            {/* View Folder Insights */}
+            <button
+              onClick={() => {
+                const f = folderContextMenu.folder;
+                setFolderContextMenu(null);
+                setInsightsFolder(f);
+                soundFx.playTap();
+              }}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <BarChart2 className="w-3.5 h-3.5 text-[#7C3AED] shrink-0" />
+                <span className="truncate">Аналітика (Insights)</span>
+              </div>
+              <span className="text-[10px] text-[#7C3AED] font-mono font-bold bg-[#7C3AED]/10 px-1.5 py-0.2 rounded shrink-0 whitespace-nowrap">
+                30 днів
+              </span>
+            </button>
+
+            {/* Copy Folder Link (Deep Link) */}
+            <button
+              onClick={() => handleCopyFolderLinkAction(folderContextMenu.folder)}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Link2 className="w-3.5 h-3.5 text-[#2563EB] shrink-0" />
+                <span className="truncate">Копіювати посилання</span>
+              </div>
+              <span className="text-[10px] text-[#2563EB] font-mono font-bold bg-[#2563EB]/10 px-1.5 py-0.2 rounded shrink-0 whitespace-nowrap">
+                Deep Link
+              </span>
+            </button>
+
+            {/* Share Folder */}
+            <button
+              onClick={() => {
+                const f = folderContextMenu.folder;
+                setFolderContextMenu(null);
+                setSharingFolder(f);
+                soundFx.playTap();
+              }}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Share2 className="w-3.5 h-3.5 text-[#E87A42] shrink-0" />
+                <span className="truncate">Поділитися простором</span>
+              </div>
+              <span className="text-[10px] text-[#717E75] font-mono shrink-0 whitespace-nowrap">
+                Код
+              </span>
+            </button>
+
+            {/* Export Chat List as JSON */}
+            <button
+              onClick={() => handleExportChatListAction(folderContextMenu.folder)}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Download className="w-3.5 h-3.5 text-[#528A4B] shrink-0" />
+                <span className="truncate">Експорт чатів</span>
+              </div>
+              <span className="text-[10px] text-[#528A4B] font-mono font-bold bg-[#528A4B]/10 px-1.5 py-0.2 rounded shrink-0 whitespace-nowrap">
+                JSON
+              </span>
+            </button>
+          </div>
+
+          {/* Section 4: Management */}
+          <div className="border-t border-[#F2ECE2] pt-1 space-y-0.5">
+            <div className="px-2 py-0.5 text-[9px] font-extrabold text-[#8C988E] uppercase tracking-wider">
+              Керування
+            </div>
+
+            {/* Rename Folder (Inline overlay) */}
+            <button
+              onClick={() => handleStartRename(folderContextMenu.folder)}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center gap-2 text-[#1F2521] transition-colors"
+            >
+              <Pencil className="w-3.5 h-3.5 text-[#E87A42] shrink-0" />
+              <span className="truncate">Перейменувати</span>
+            </button>
+
+            {/* Edit Folder */}
+            <button
+              onClick={() => {
+                const f = folderContextMenu.folder;
+                setFolderContextMenu(null);
+                onOpenEditFolder(f);
+              }}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center gap-2 text-[#1F2521] transition-colors"
+            >
+              <FolderEdit className="w-3.5 h-3.5 text-[#717E75] shrink-0" />
+              <span className="truncate">Налаштувати простір...</span>
+            </button>
+
+            {/* Archive / Restore Folder */}
+            <button
+              onClick={() => handleToggleArchiveAction(folderContextMenu.folder)}
+              className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {folderContextMenu.folder.isArchived ? (
+                  <ArchiveRestore className="w-3.5 h-3.5 text-[#528A4B] shrink-0" />
+                ) : (
+                  <Archive className="w-3.5 h-3.5 text-[#8C461A] shrink-0" />
+                )}
+                <span className="truncate">
+                  {folderContextMenu.folder.isArchived ? 'Розархівувати' : 'В архів'}
+                </span>
+              </div>
+              <span
+                className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded shrink-0 whitespace-nowrap ${
+                  folderContextMenu.folder.isArchived
+                    ? 'bg-[#528A4B]/15 text-[#528A4B]'
+                    : 'bg-[#8C461A]/10 text-[#8C461A]'
+                }`}
+              >
+                {folderContextMenu.folder.isArchived ? 'Відновити' : 'Архів'}
+              </span>
+            </button>
+
+            {/* Clear / Delete for custom folders */}
+            {!folderContextMenu.folder.isBuiltIn && (
+              <div className="border-t border-[#F2ECE2] pt-1 space-y-0.5">
+                <button
+                  onClick={() => handleClearFolderAction(folderContextMenu.folder)}
+                  className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center gap-2 text-[#717E75] hover:text-[#1F2521] transition-colors"
+                >
+                  <Folder className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Очистити чати</span>
+                </button>
+
+                <button
+                  onClick={() => handleDeleteFolderAction(folderContextMenu.folder)}
+                  className="w-full px-2.5 py-1.5 rounded-xl hover:bg-red-50 text-left text-xs font-semibold flex items-center gap-2 text-red-600 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Видалити папку</span>
+                </button>
               </div>
             )}
           </div>
-
-          {/* Action: Choose Folder Icon & Emoji */}
-          <button
-            onClick={() => {
-              const f = folderContextMenu.folder;
-              setFolderContextMenu(null);
-              setIconPickerFolder(f);
-              soundFx.playTap();
-            }}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Smile className="w-3.5 h-3.5 text-[#E87A42]" />
-              <span>Змінити іконку / Emoji</span>
-            </div>
-            <span className="text-xs font-bold px-1.5 py-0.2 rounded bg-[#F0E8DC] border border-[#DFD6C5]">
-              {folderContextMenu.folder.emoji}
-            </span>
-          </button>
-
-          {/* Action: View Folder Insights */}
-          <button
-            onClick={() => {
-              const f = folderContextMenu.folder;
-              setFolderContextMenu(null);
-              setInsightsFolder(f);
-              soundFx.playTap();
-            }}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <BarChart2 className="w-3.5 h-3.5 text-[#7C3AED]" />
-              <span>Аналітика простору (Insights)</span>
-            </div>
-            <span className="text-[10px] text-[#7C3AED] font-mono font-bold bg-[#7C3AED]/10 px-1.5 py-0.2 rounded">
-              30 днів
-            </span>
-          </button>
-
-          {/* Action: Copy Folder Link (Deep Link) */}
-          <button
-            onClick={() => handleCopyFolderLinkAction(folderContextMenu.folder)}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Link2 className="w-3.5 h-3.5 text-[#2563EB]" />
-              <span>Копіювати посилання (Copy Link)</span>
-            </div>
-            <span className="text-[10px] text-[#2563EB] font-mono font-bold bg-[#2563EB]/10 px-1.5 py-0.2 rounded">
-              Deep Link
-            </span>
-          </button>
-
-          {/* Action: Share Folder */}
-          <button
-            onClick={() => {
-              const f = folderContextMenu.folder;
-              setFolderContextMenu(null);
-              setSharingFolder(f);
-              soundFx.playTap();
-            }}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Share2 className="w-3.5 h-3.5 text-[#E87A42]" />
-              <span>Поділитися папкою (Share)</span>
-            </div>
-            <span className="text-[10px] text-[#717E75] font-mono">
-              Посилання
-            </span>
-          </button>
-
-          {/* Action: Archive / Restore Folder */}
-          <button
-            onClick={() => handleToggleArchiveAction(folderContextMenu.folder)}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              {folderContextMenu.folder.isArchived ? (
-                <ArchiveRestore className="w-3.5 h-3.5 text-[#528A4B]" />
-              ) : (
-                <Archive className="w-3.5 h-3.5 text-[#8C461A]" />
-              )}
-              <span>
-                {folderContextMenu.folder.isArchived
-                  ? 'Розархівувати простір'
-                  : 'Архівувати простір (Archive Folder)'}
-              </span>
-            </div>
-            <span
-              className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                folderContextMenu.folder.isArchived
-                  ? 'bg-[#528A4B]/15 text-[#528A4B]'
-                  : 'bg-[#8C461A]/10 text-[#8C461A]'
-              }`}
-            >
-              {folderContextMenu.folder.isArchived ? 'Відновити' : 'В архів'}
-            </span>
-          </button>
-
-          {/* Action: Export Chat List as JSON */}
-          <button
-            onClick={() => handleExportChatListAction(folderContextMenu.folder)}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center justify-between text-[#1F2521] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Download className="w-3.5 h-3.5 text-[#528A4B]" />
-              <span>Експорт списку чатів (.json)</span>
-            </div>
-            <span className="text-[10px] text-[#528A4B] font-mono font-bold bg-[#528A4B]/10 px-1.5 py-0.2 rounded">
-              JSON
-            </span>
-          </button>
-
-          {/* Action 4: Rename Folder (Inline overlay) */}
-          <button
-            onClick={() => handleStartRename(folderContextMenu.folder)}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center gap-2 text-[#1F2521] transition-colors"
-          >
-            <Pencil className="w-3.5 h-3.5 text-[#E87A42]" />
-            <span>Перейменувати</span>
-          </button>
-
-          {/* Action 5: Edit Folder */}
-          <button
-            onClick={() => {
-              const f = folderContextMenu.folder;
-              setFolderContextMenu(null);
-              onOpenEditFolder(f);
-            }}
-            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center gap-2 text-[#1F2521] transition-colors"
-          >
-            <FolderEdit className="w-3.5 h-3.5 text-[#717E75]" />
-            <span>Налаштувати простір...</span>
-          </button>
-
-          {/* Action 5 & 6 (Clear / Delete for custom folders) */}
-          {!folderContextMenu.folder.isBuiltIn && (
-            <div className="border-t border-[#F2ECE2] pt-1 space-y-0.5">
-              <button
-                onClick={() => handleClearFolderAction(folderContextMenu.folder)}
-                className="w-full px-2.5 py-1.5 rounded-xl hover:bg-[#FAF5ED] text-left text-xs font-semibold flex items-center gap-2 text-[#717E75] hover:text-[#1F2521] transition-colors"
-              >
-                <Folder className="w-3.5 h-3.5" />
-                <span>Очистити чати з папки</span>
-              </button>
-
-              <button
-                onClick={() => handleDeleteFolderAction(folderContextMenu.folder)}
-                className="w-full px-2.5 py-1.5 rounded-xl hover:bg-red-50 text-left text-xs font-semibold flex items-center gap-2 text-red-600 transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Видалити папку</span>
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -2064,6 +2202,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <ChevronDown className={`w-4 h-4 transition-transform ${isPersonaMenuOpen ? 'rotate-180' : ''}`} />
           </button>
         </div>
+      </div>
       </div>
     </aside>
   );

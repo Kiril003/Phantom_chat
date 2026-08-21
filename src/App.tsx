@@ -3,6 +3,7 @@ import { initialChats, initialSmartFolders, initialScheduledMessages, currentUse
 import {
   Chat,
   Message,
+  MessageReplyInfo,
   LocationData,
   ChatMember,
   UserProfile,
@@ -30,11 +31,14 @@ import { MediaLightboxModal } from './components/MediaLightboxModal';
 import { ScheduleMessageModal } from './components/ScheduleMessageModal';
 import { ScheduledMessagesDrawer } from './components/ScheduledMessagesDrawer';
 import { SmartFolderModal } from './components/SmartFolderModal';
+import { P2PNetworkModal } from './components/P2PNetworkModal';
 import { soundFx } from './utils/sound';
+import { networkEngine } from './utils/networkEngine';
 
 export function App() {
   const [chats, setChats] = useState<Chat[]>(initialChats);
   const [activeChatId, setActiveChatId] = useState<string>(initialChats[0].id);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [currentUser, setCurrentUser] = useState<UserProfile>(defaultCurrentUser);
   const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(true);
 
@@ -46,10 +50,40 @@ export function App() {
   const [isDigestOpen, setIsDigestOpen] = useState(false);
   const [isActionHubOpen, setIsActionHubOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isP2PModalOpen, setIsP2PModalOpen] = useState(false);
   const [isGroupDetailsOpen, setIsGroupDetailsOpen] = useState(false);
   const [isCreateChatOpen, setIsCreateChatOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [scheduledTimeString, setScheduledTimeString] = useState<string | undefined>(undefined);
+
+  // Network Engine Initialization & Listener
+  useEffect(() => {
+    networkEngine.init(currentUser.id, currentUser.name, currentUser.avatar);
+
+    const unsubscribe = networkEngine.onMessage((targetChatId: string, incomingMsg: Message) => {
+      soundFx.playReceive();
+      setChats((prev) =>
+        prev.map((c) => {
+          if (c.id === targetChatId) {
+            // Avoid duplicate messages if already present
+            if ((c.messages || []).some((m) => m.id === incomingMsg.id)) {
+              return c;
+            }
+            return {
+              ...c,
+              messages: [...(c.messages || []), incomingMsg],
+              unreadCount: activeChatId === targetChatId ? 0 : (c.unreadCount || 0) + 1,
+            };
+          }
+          return c;
+        })
+      );
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentUser.id, currentUser.name, currentUser.avatar, activeChatId]);
 
   // Smart Folders / Workspaces
   const [smartFolders, setSmartFolders] = useState<SmartFolder[]>(initialSmartFolders);
@@ -103,8 +137,11 @@ export function App() {
   // Search in chat
   const [isSearchingInChat, setIsSearchingInChat] = useState(false);
 
+  // Mobile navigation state: false = show chats list, true = show active chat conversation
+  const [showMobileChat, setShowMobileChat] = useState(false);
+
   // Reply & Edit state
-  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [replyingTo, setReplyingTo] = useState<MessageReplyInfo | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
 
   // Multi-message selection mode
@@ -130,7 +167,15 @@ export function App() {
   // AI Thinking indicator
   const [isAiTyping, setIsAiTyping] = useState(false);
 
-  const currentChat = chats.find((c) => c.id === activeChatId) || chats[0];
+  const currentChat = chats.find((c) => c.id === activeChatId) || chats[0] || {
+    id: 'default',
+    name: 'Чат',
+    avatar: '',
+    type: 'dm',
+    circle: 'work',
+    unreadCount: 0,
+    messages: [],
+  };
   const pinnedCount = currentChat.pinnedMessages?.length || 0;
 
   // Toggle message selection
@@ -156,7 +201,7 @@ export function App() {
   const handleSynthesizeSelection = async () => {
     if (selectedMessageIds.length === 0) return;
 
-    const selectedMsgs = currentChat.messages
+    const selectedMsgs = (currentChat.messages || [])
       .filter((m) => selectedMessageIds.includes(m.id))
       .map((m) => ({
         id: m.id,
@@ -198,7 +243,7 @@ export function App() {
 
       setChats((prev) =>
         prev.map((c) =>
-          c.id === activeChatId ? { ...c, messages: [...c.messages, newMsg] } : c
+          c.id === activeChatId ? { ...c, messages: [...(c.messages || []), newMsg] } : c
         )
       );
     } catch (err) {
@@ -212,7 +257,7 @@ export function App() {
   const handleCreateMultiQuote = () => {
     if (selectedMessageIds.length === 0) return;
 
-    const selectedMsgs = currentChat.messages
+    const selectedMsgs = (currentChat.messages || [])
       .filter((m) => selectedMessageIds.includes(m.id))
       .map((m) => ({
         id: m.id,
@@ -239,19 +284,81 @@ export function App() {
 
     setChats((prev) =>
       prev.map((c) =>
-        c.id === activeChatId ? { ...c, messages: [...c.messages, newMsg] } : c
+        c.id === activeChatId ? { ...c, messages: [...(c.messages || []), newMsg] } : c
       )
     );
     handleClearSelection();
   };
 
   const handleCopyAllSelected = () => {
-    const selectedTexts = currentChat.messages
+    const selectedTexts = (currentChat.messages || [])
       .filter((m) => selectedMessageIds.includes(m.id))
       .map((m) => `[${m.senderName} - ${m.timestamp}]: ${m.text || m.type}`)
       .join('\n\n');
     navigator.clipboard.writeText(selectedTexts);
     handleClearSelection();
+  };
+
+  // Reply to multiple selected messages simultaneously
+  const handleReplyMultipleSelected = () => {
+    if (selectedMessageIds.length === 0) return;
+    const selectedMsgs = (currentChat.messages || [])
+      .filter((m) => selectedMessageIds.includes(m.id))
+      .map((m) => ({
+        id: m.id,
+        senderName: m.senderName,
+        senderAvatar: m.senderAvatar,
+        text: m.text || (m.tableData ? `[Таблиця: ${m.tableData.title}]` : m.type),
+        timestamp: m.timestamp,
+      }));
+
+    setReplyingTo({
+      id: selectedMsgs[0]?.id || `multi_${Date.now()}`,
+      senderName: selectedMsgs.map((m) => m.senderName).join(', '),
+      text: `[Відповідь на ${selectedMsgs.length} повідомлень]`,
+      quotes: selectedMsgs,
+    });
+    handleClearSelection();
+  };
+
+  // Remove individual quote from rich multi-quote
+  const handleRemoveReplyQuote = (quoteId: string) => {
+    if (!replyingTo) return;
+    if (replyingTo.quotes && replyingTo.quotes.length > 1) {
+      const filtered = replyingTo.quotes.filter((q) => q.id !== quoteId);
+      if (filtered.length === 0) {
+        setReplyingTo(null);
+      } else {
+        setReplyingTo({
+          ...replyingTo,
+          quotes: filtered,
+          senderName: filtered.map((q) => q.senderName).join(', '),
+        });
+      }
+    } else {
+      setReplyingTo(null);
+    }
+  };
+
+  // Reply single message or partial text quote handler
+  const handleReplyMessage = (msg: Message, quoteSelectedText?: string) => {
+    setReplyingTo({
+      id: msg.id,
+      senderName: msg.senderName,
+      text: msg.text || (msg.tableData ? `[Таблиця: ${msg.tableData.title}]` : msg.type),
+      type: msg.type,
+      quoteSelectedText: quoteSelectedText,
+      quotes: [
+        {
+          id: msg.id,
+          senderName: msg.senderName,
+          senderAvatar: msg.senderAvatar,
+          text: quoteSelectedText || msg.text || msg.type,
+          timestamp: msg.timestamp,
+        },
+      ],
+    });
+    setEditingMessage(null);
   };
 
   // Send new message (text, rich payload, scheduled)
@@ -298,6 +405,15 @@ export function App() {
       setScheduledMessages((prev) => [scheduledItem, ...prev]);
       setReplyingTo(null);
       setScheduledTimeString(undefined);
+      setDrafts((prev) => {
+        if (!prev[activeChatId]) return prev;
+        const next = { ...prev };
+        delete next[activeChatId];
+        return next;
+      });
+      setChats((prev) =>
+        prev.map((c) => (c.id === activeChatId ? { ...c, draft: undefined } : c))
+      );
       return;
     }
 
@@ -313,20 +429,35 @@ export function App() {
         ? {
             id: replyingTo.id,
             senderName: replyingTo.senderName,
-            text: replyingTo.text || replyingTo.type,
+            text: replyingTo.text,
+            type: replyingTo.type,
+            quoteSelectedText: replyingTo.quoteSelectedText,
+            quotes: replyingTo.quotes,
           }
         : undefined,
       ...payload,
     };
 
+    // Broadcast over Hybrid Network Engine (P2P / Server)
+    const transportUsed = networkEngine.sendMessage(activeChatId, newMsg);
+    newMsg.transport = transportUsed;
+
     // Reset reply & scheduled states
     setReplyingTo(null);
     setScheduledTimeString(undefined);
 
+    // Clear draft for this active chat
+    setDrafts((prev) => {
+      if (!prev[activeChatId]) return prev;
+      const next = { ...prev };
+      delete next[activeChatId];
+      return next;
+    });
+
     setChats((prev) =>
       prev.map((c) =>
         c.id === activeChatId
-          ? { ...c, messages: [...c.messages, newMsg], unreadCount: 0 }
+          ? { ...c, messages: [...c.messages, newMsg], unreadCount: 0, draft: undefined }
           : c
       )
     );
@@ -465,7 +596,7 @@ export function App() {
         if (c.id !== activeChatId) return c;
         return {
           ...c,
-          messages: c.messages.map((m) =>
+          messages: (c.messages || []).map((m) =>
             m.id === messageId ? { ...m, text: newText, isEdited: true } : m
           ),
         };
@@ -481,7 +612,7 @@ export function App() {
         if (c.id !== activeChatId) return c;
         return {
           ...c,
-          messages: c.messages.filter((m) => m.id !== messageId),
+          messages: (c.messages || []).filter((m) => m.id !== messageId),
           pinnedMessages: (c.pinnedMessages || []).filter((id) => id !== messageId),
         };
       })
@@ -510,7 +641,7 @@ export function App() {
         if (c.id !== activeChatId) return c;
         return {
           ...c,
-          messages: c.messages.map((m) =>
+          messages: (c.messages || []).map((m) =>
             m.id === messageId ? { ...m, tableData: updatedTable } : m
           ),
         };
@@ -525,7 +656,7 @@ export function App() {
         if (c.id !== activeChatId) return c;
         return {
           ...c,
-          messages: c.messages.map((m) =>
+          messages: (c.messages || []).map((m) =>
             m.id === messageId ? { ...m, taskListData: updatedTasks } : m
           ),
         };
@@ -538,7 +669,7 @@ export function App() {
     setChats((prev) =>
       prev.map((c) => {
         if (c.id !== activeChatId) return c;
-        const newMessages = c.messages.map((m) => {
+        const newMessages = (c.messages || []).map((m) => {
           if (m.id !== messageId || !m.pollData) return m;
           const options = m.pollData.options.map((opt) =>
             opt.id === optionId ? { ...opt, votes: opt.votes + 1 } : opt
@@ -562,7 +693,7 @@ export function App() {
     setChats((prev) =>
       prev.map((c) => {
         if (c.id !== activeChatId) return c;
-        const newMessages = c.messages.map((m) => {
+        const newMessages = (c.messages || []).map((m) => {
           if (m.id !== messageId || !m.splitBillData) return m;
           const participants = m.splitBillData.participants.map((p) =>
             p.id === participantId ? { ...p, paid: true } : p
@@ -586,7 +717,7 @@ export function App() {
     setChats((prev) =>
       prev.map((c) => {
         if (c.id !== activeChatId) return c;
-        const newMessages = c.messages.map((m) => {
+        const newMessages = (c.messages || []).map((m) => {
           if (m.id !== messageId) return m;
           const reactions = [...(m.reactions || [])];
           const existing = reactions.find((r) => r.emoji === emoji);
@@ -616,6 +747,7 @@ export function App() {
     const existing = chats.find((c) => c.id === `dm_${memberId}`);
     if (existing) {
       setActiveChatId(existing.id);
+      setShowMobileChat(true);
     } else {
       const member =
         typeof memberOrId === 'object'
@@ -645,6 +777,7 @@ export function App() {
         };
         setChats((prev) => [newDm, ...prev]);
         setActiveChatId(newDm.id);
+        setShowMobileChat(true);
       }
     }
   };
@@ -768,6 +901,7 @@ export function App() {
 
     setChats((prev) => [newChat, ...prev]);
     setActiveChatId(newChat.id);
+    setShowMobileChat(true);
   };
 
   // Smart Folder / Workspace Handlers
@@ -883,68 +1017,74 @@ export function App() {
     setIsSmartFolderModalOpen(true);
   };
 
-  const selectedMessagesForQuoteObjects = currentChat.messages.filter((m) =>
-    selectedMessageIds.includes(m.id)
+  const selectedMessagesForQuoteObjects = (currentChat?.messages || []).filter((m) =>
+    (selectedMessageIds || []).includes(m.id)
   );
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#FAF8F3] font-sans antialiased text-[#1F2521]">
       {/* 1. Sidebar (Smart Folders, Circles & Spaces) */}
-      <Sidebar
-        chats={chats}
-        activeChatId={activeChatId}
-        onSelectChat={(id) => {
-          setActiveChatId(id);
-          handleClearSelection();
-          setReplyingTo(null);
-          setEditingMessage(null);
-        }}
-        currentUser={currentUser}
-        smartFolders={smartFolders}
-        activeFolderId={activeFolderId}
-        onSelectFolder={(fId) => setActiveFolderId(fId)}
-        onAddChatToFolder={handleAddChatToFolder}
-        onRemoveChatFromFolder={handleRemoveChatFromFolder}
-        onOpenCreateFolder={handleOpenCreateFolder}
-        onOpenEditFolder={handleOpenEditFolder}
-        onRenameFolder={handleRenameFolder}
-        onMarkFolderAsRead={handleMarkFolderAsRead}
-        onToggleMuteFolder={handleToggleMuteFolder}
-        onToggleArchiveFolder={handleToggleArchiveFolder}
-        onSetFolderVibeAndColor={handleSetFolderVibeAndColor}
-        onSetFolderIcon={handleSetFolderIcon}
-        onClearFolderChats={handleClearFolderChats}
-        onDeleteFolder={handleDeleteFolder}
-        onNewChat={() => setIsCreateChatOpen(true)}
-        onOpenUserProfile={() => setIsSelfProfileOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onSwitchPersonaSphere={(sphere) => {
-          setCurrentUser((prev) => {
-            const persona = prev.personas?.[sphere];
-            return {
-              ...prev,
-              activePersonaSphere: sphere,
-              name: persona?.name || prev.name,
-              handle: persona?.handle || prev.handle,
-              status: persona?.statusText || prev.status,
-              statusEmoji: persona?.statusEmoji || prev.statusEmoji,
-              bio: persona?.bio || prev.bio,
-            };
-          });
-        }}
-      />
+      <div className={`h-full shrink-0 ${showMobileChat ? 'hidden md:flex' : 'flex w-full md:w-auto'}`}>
+        <Sidebar
+          chats={chats}
+          activeChatId={activeChatId}
+          onSelectChat={(id) => {
+            setActiveChatId(id);
+            setShowMobileChat(true);
+            handleClearSelection();
+            setReplyingTo(null);
+            setEditingMessage(null);
+          }}
+          currentUser={currentUser}
+          smartFolders={smartFolders}
+          activeFolderId={activeFolderId}
+          onSelectFolder={(fId) => setActiveFolderId(fId)}
+          onAddChatToFolder={handleAddChatToFolder}
+          onRemoveChatFromFolder={handleRemoveChatFromFolder}
+          onOpenCreateFolder={handleOpenCreateFolder}
+          onOpenEditFolder={handleOpenEditFolder}
+          onRenameFolder={handleRenameFolder}
+          onMarkFolderAsRead={handleMarkFolderAsRead}
+          onToggleMuteFolder={handleToggleMuteFolder}
+          onToggleArchiveFolder={handleToggleArchiveFolder}
+          onSetFolderVibeAndColor={handleSetFolderVibeAndColor}
+          onSetFolderIcon={handleSetFolderIcon}
+          onClearFolderChats={handleClearFolderChats}
+          onDeleteFolder={handleDeleteFolder}
+          onNewChat={() => setIsCreateChatOpen(true)}
+          onOpenUserProfile={() => setIsSelfProfileOpen(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenP2PNetworkModal={() => setIsP2PModalOpen(true)}
+          onSwitchPersonaSphere={(sphere) => {
+            setCurrentUser((prev) => {
+              const persona = prev.personas?.[sphere];
+              return {
+                ...prev,
+                activePersonaSphere: sphere,
+                name: persona?.name || prev.name,
+                handle: persona?.handle || prev.handle,
+                status: persona?.statusText || prev.status,
+                statusEmoji: persona?.statusEmoji || prev.statusEmoji,
+                bio: persona?.bio || prev.bio,
+              };
+            });
+          }}
+        />
+      </div>
 
       {/* 2. Main Chat Area & Work Canvas */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+      <main className={`flex-1 flex-col h-full overflow-hidden relative ${showMobileChat ? 'flex' : 'hidden md:flex'}`}>
         {/* Header */}
         <Header
           currentChat={currentChat}
           currentUser={currentUser}
+          onBack={() => setShowMobileChat(false)}
           onOpenDigest={() => setIsDigestOpen(true)}
           onOpenActions={() => setIsActionHubOpen(true)}
           onOpenScheduledMessages={() => setIsScheduledDrawerOpen(true)}
           scheduledMessagesCount={scheduledMessages.length}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenP2PModal={() => setIsP2PModalOpen(true)}
           onOpenGroupDetails={() => setIsGroupDetailsOpen(true)}
           isHuddleActive={isHuddleActive}
           onToggleHuddle={() => setIsHuddleActive(!isHuddleActive)}
@@ -990,17 +1130,14 @@ export function App() {
 
         {/* Chat Feed */}
         <ChatArea
+          currentChat={currentChat}
           messages={currentChat.messages}
           currentUserId={currentUser.id}
-          pinnedMessageIds={currentChat.pinnedMessages || []}
           onOpenLocation={(loc) => setActiveLocationDossier(loc)}
           onVotePoll={handleVotePoll}
           onPayBillShare={handlePayBillShare}
           onAddReaction={handleAddReaction}
-          onReplyMessage={(msg) => {
-            setReplyingTo(msg);
-            setEditingMessage(null);
-          }}
+          onReplyMessage={handleReplyMessage}
           onEditMessage={(msg) => {
             setEditingMessage(msg);
             setReplyingTo(null);
@@ -1015,12 +1152,11 @@ export function App() {
           isAiTyping={isAiTyping}
           onUpdateTableData={handleUpdateTableData}
           onUpdateTaskListData={handleUpdateTaskListData}
-          onOpenImageLightbox={(url, title, senderName, timestamp) => {
-            setLightboxMedia({ url, title, senderName, timestamp });
+          onOpenImageLightbox={(url, title) => {
+            setLightboxMedia({ url, title, senderName: currentChat.title });
           }}
           isSearching={isSearchingInChat}
           onCloseSearch={() => setIsSearchingInChat(false)}
-          onSendQuickReply={(text) => handleSendMessage(text)}
         />
 
         {/* Floating Multi-Select & Synthesis Bar */}
@@ -1029,15 +1165,27 @@ export function App() {
           onClearSelection={handleClearSelection}
           onSynthesize={handleSynthesizeSelection}
           onCreateMultiQuote={handleCreateMultiQuote}
+          onReplyMultiple={handleReplyMultipleSelected}
           onCopyAll={handleCopyAllSelected}
           onForward={() => {
-            const firstMsg = currentChat.messages.find((m) => selectedMessageIds.includes(m.id));
+            const firstMsg = (currentChat?.messages || []).find((m) => (selectedMessageIds || []).includes(m.id));
             if (firstMsg) setForwardingMessage(firstMsg);
           }}
         />
 
         {/* Message Composer */}
         <MessageComposer
+          chatId={activeChatId}
+          initialDraft={drafts[activeChatId] || currentChat.draft || ''}
+          onDraftChange={(cId, draftText) => {
+            setDrafts((prev) => ({
+              ...prev,
+              [cId]: draftText,
+            }));
+            setChats((prev) =>
+              prev.map((c) => (c.id === cId ? { ...c, draft: draftText.trim() ? draftText : undefined } : c))
+            );
+          }}
           onSendMessage={handleSendMessage}
           onSendVoiceMessage={handleSendVoiceMessage}
           onOpenActions={() => setIsActionHubOpen(true)}
@@ -1046,6 +1194,7 @@ export function App() {
           scheduledCountInCurrentChat={scheduledMessages.filter((m) => m.chatId === activeChatId).length}
           replyingTo={replyingTo}
           onCancelReply={() => setReplyingTo(null)}
+          onRemoveReplyQuote={handleRemoveReplyQuote}
           editingMessage={editingMessage}
           onCancelEdit={() => setEditingMessage(null)}
           onSaveEdit={handleSaveEdit}
@@ -1054,6 +1203,7 @@ export function App() {
           onClearSelectedQuotes={handleClearSelection}
           scheduledTime={scheduledTimeString}
           onClearScheduledTime={() => setScheduledTimeString(undefined)}
+          chatMembers={currentChat.members}
         />
       </main>
 
@@ -1092,6 +1242,7 @@ export function App() {
       <ActionHubModal
         isOpen={isActionHubOpen}
         onClose={() => setIsActionHubOpen(false)}
+        chat={currentChat}
         onInsertAction={(payload) => handleSendMessage(payload)}
       />
 
@@ -1104,16 +1255,38 @@ export function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        currentUser={currentUser}
-        onUpdateUser={(updated) => setCurrentUser((prev) => ({ ...prev, ...updated }))}
-        chats={chats}
-        onClearChatHistory={() => {
+        isSoundEnabled={isSoundEnabled}
+        onToggleSound={() => setIsSoundEnabled(!isSoundEnabled)}
+        onExportAllData={() => {
+          const exportPayload = {
+            version: '1.0.0',
+            exportedAt: new Date().toISOString(),
+            user: currentUser,
+            folders: smartFolders,
+            scheduledMessages: scheduledMessages,
+            chats: chats,
+          };
+          const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `aura-backup-${new Date().toISOString().slice(0, 10)}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }}
+        onClearHistory={() => {
           setChats((prev) =>
             prev.map((c) =>
               c.id === activeChatId ? { ...c, messages: [] } : c
             )
           );
         }}
+        onOpenP2PNetworkModal={() => setIsP2PModalOpen(true)}
+      />
+
+      <P2PNetworkModal
+        isOpen={isP2PModalOpen}
+        onClose={() => setIsP2PModalOpen(false)}
       />
 
       <CreateChatModal

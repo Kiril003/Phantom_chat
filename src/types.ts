@@ -82,13 +82,26 @@ export interface PollData {
   userVotedOptionId?: string;
 }
 
+export interface EventAttendee {
+  id: string;
+  name: string;
+  avatar: string;
+  status: 'going' | 'maybe' | 'declined' | 'invited';
+}
+
 export interface EventData {
   id?: string;
   title: string;
+  description?: string;
   date: string;
   time: string;
+  endTime?: string;
   location: string;
   attendees: string[];
+  attendeeDetails?: EventAttendee[];
+  calendarType?: string;
+  meetLink?: string;
+  sourceMessageText?: string;
   maxCapacity?: number;
 }
 
@@ -195,6 +208,22 @@ export interface Reaction {
   users: string[];
 }
 
+export interface QuotedMessageSnippet {
+  id: string;
+  senderName: string;
+  senderAvatar?: string;
+  text: string;
+}
+
+export interface MessageReplyInfo {
+  id: string;
+  senderName: string;
+  text: string;
+  type?: MessageType;
+  quoteSelectedText?: string;
+  quotes?: QuotedMessageSnippet[];
+}
+
 export interface Message {
   id: string;
   senderId: string;
@@ -220,11 +249,7 @@ export interface Message {
     durationSeconds: number;
   };
   reactions?: Reaction[];
-  replyTo?: {
-    id: string;
-    senderName: string;
-    text: string;
-  };
+  replyTo?: MessageReplyInfo;
   forwardFrom?: {
     chatTitle: string;
     senderName: string;
@@ -234,6 +259,13 @@ export interface Message {
   isSelf?: boolean;
   status?: 'sent' | 'delivered' | 'read';
   scheduledTime?: string;
+  transport?: 'server' | 'p2p';
+  p2pMeta?: {
+    latencyMs?: number;
+    peerFingerprint?: string;
+    directHops?: number;
+    encryptedE2E?: boolean;
+  };
 }
 
 export interface ScheduledMessage {
@@ -435,7 +467,44 @@ export interface Chat {
   pendingJoinRequests?: PendingJoinRequest[];
   auditLogs?: GroupAuditItem[];
   allowedReactions?: 'all' | 'basic' | 'none';
+  draft?: string;
+  transportMode?: TransportProtocol; // 'auto' | 'server' | 'p2p'
   messages: Message[];
+}
+
+export type TransportProtocol = 'auto' | 'server' | 'p2p';
+export type ActiveTransportStatus = 'server-ws' | 'p2p-direct' | 'connecting' | 'fallback-server' | 'offline';
+
+export interface P2PPeerSession {
+  peerId: string;
+  peerName: string;
+  avatar?: string;
+  connectionState: 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'closed';
+  iceState: 'new' | 'checking' | 'connected' | 'completed' | 'failed' | 'disconnected' | 'closed';
+  dataChannelState: 'connecting' | 'open' | 'closing' | 'closed';
+  rttMs?: number;
+  bytesSent?: number;
+  bytesReceived?: number;
+  packetsLost?: number;
+  fingerprint?: string;
+  isDirectP2P: boolean;
+  connectedAt?: string;
+}
+
+export interface NetworkDiagnostics {
+  transportMode: TransportProtocol;
+  activeStatus: ActiveTransportStatus;
+  latencyMs: number;
+  connectedClientsCount: number;
+  p2pPeersCount: number;
+  isWebRTCSupported: boolean;
+  isWebSocketConnected: boolean;
+  bytesTransferred: {
+    server: number;
+    p2p: number;
+  };
+  stunServer: string;
+  dataChannelStatus: string;
 }
 
 export interface HuddleParticipant {

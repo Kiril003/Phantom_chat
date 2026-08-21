@@ -470,19 +470,24 @@ export const ActionHubModal: React.FC<ActionHubModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-[#FAF8F3] border border-[#DCD3C1] rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden select-none animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="bg-[#FAF8F3] border-t sm:border border-[#DCD3C1] rounded-t-3xl sm:rounded-3xl w-full max-w-2xl max-h-[92dvh] sm:max-h-[90vh] flex flex-col shadow-2xl overflow-hidden select-none animate-in slide-in-from-bottom sm:zoom-in-95 duration-150 pb-[var(--sab)] sm:pb-0">
+        {/* Mobile Pull Indicator */}
+        <div className="sm:hidden pt-2.5 pb-1 flex justify-center bg-[#F5EFE4]">
+          <div className="w-12 h-1 bg-[#D5C9B8] rounded-full" />
+        </div>
+
         {/* Modal Header */}
-        <div className="px-5 py-4 border-b border-[#E8DFD1] flex items-center justify-between bg-[#F5EFE4]">
+        <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-[#E8DFD1] flex items-center justify-between bg-[#F5EFE4]">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-[#E87A42] text-white flex items-center justify-center font-bold text-base shadow-2xs">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-2xl bg-[#E87A42] text-white flex items-center justify-center font-bold text-sm sm:text-base shadow-2xs">
               ⚡
             </div>
             <div>
-              <h3 className="font-extrabold text-base text-[#1F2521] flex items-center gap-2">
+              <h3 className="font-extrabold text-sm sm:text-base text-[#1F2521] flex items-center gap-2">
                 ActionHub · Інтерактивні картки
               </h3>
-              <p className="text-xs text-[#717E75]">
+              <p className="text-[11px] sm:text-xs text-[#717E75]">
                 Створюйте події в календарі, таблиці, графіки, чеки та опитування
               </p>
             </div>

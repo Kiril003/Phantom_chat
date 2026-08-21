@@ -13,7 +13,7 @@ export const DataTableViewer: React.FC<DataTableViewerProps> = ({ data, onUpdate
   const [searchTerm, setSearchTerm] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortAsc, setSortAsc] = useState<boolean>(true);
-  const [rows, setRows] = useState<Record<string, any>[]>(data.rows || []);
+  const [rows, setRows] = useState<Record<string, any>[]>(data?.rows || []);
   const [isCopied, setIsCopied] = useState(false);
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; colKey: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
@@ -37,7 +37,7 @@ export const DataTableViewer: React.FC<DataTableViewerProps> = ({ data, onUpdate
 
   const handleSaveCell = (rowIdx: number, colKey: string) => {
     const updated = [...rows];
-    const columnDef = data.columns.find((c) => c.key === colKey);
+    const columnDef = (data?.columns || []).find((c) => c.key === colKey);
     const parsedVal = columnDef?.type === 'number' ? (Number(editValue) || 0) : editValue;
     updated[rowIdx] = { ...updated[rowIdx], [colKey]: parsedVal };
     setRows(updated);
@@ -52,7 +52,7 @@ export const DataTableViewer: React.FC<DataTableViewerProps> = ({ data, onUpdate
       return;
     }
     const newRow: Record<string, any> = { id: `row_${Date.now()}` };
-    data.columns.forEach((col) => {
+    (data?.columns || []).forEach((col) => {
       const val = newRowData[col.key] || '';
       newRow[col.key] = col.type === 'number' ? (Number(val) || 0) : val;
     });
@@ -93,9 +93,10 @@ export const DataTableViewer: React.FC<DataTableViewerProps> = ({ data, onUpdate
 
   const exportCSV = () => {
     soundFx.playTap();
-    const headers = data.columns.map((c) => c.label).join(',');
+    const columns = data?.columns || [];
+    const headers = columns.map((c) => c.label).join(',');
     const rowsCSV = rows
-      .map((r) => data.columns.map((c) => `"${r[c.key] ?? ''}"`).join(','))
+      .map((r) => columns.map((c) => `"${r[c.key] ?? ''}"`).join(','))
       .join('\n');
     const blob = new Blob([`${headers}\n${rowsCSV}`], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);

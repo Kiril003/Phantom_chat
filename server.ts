@@ -1,5 +1,7 @@
 import express from "express";
 import path from "path";
+import http from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
@@ -8,8 +10,231 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const server = http.createServer(app);
 
 app.use(express.json({ limit: "15mb" }));
+
+// Real-time WebSocket clients tracking
+interface WsClientInfo {
+  socket: WebSocket;
+  id: string;
+  userId: string;
+  userName: string;
+  avatar: string;
+  currentChatId?: string;
+  joinedAt: number;
+}
+const connectedClients = new Map<string, WsClientInfo>();
+
+// WebSocket Server initialization on the same HTTP port
+const wss = new WebSocketServer({ server, path: "/ws" });
+
+function broadcast(payload: any, excludeId?: string) {
+  const data = JSON.stringify(payload);
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      if (excludeId) {
+        const clientInfo = Array.from(connectedClients.values()).find((c) => c.socket === client);
+        if (clientInfo && clientInfo.id === excludeId) return;
+      }
+      client.send(data);
+    }
+  });
+}
+
+function sendToPeer(targetPeerId: string, payload: any): boolean {
+  const target = Array.from(connectedClients.values()).find((c) => c.userId === targetPeerId || c.id === targetPeerId);
+  if (target && target.socket.readyState === WebSocket.OPEN) {
+    target.socket.send(JSON.stringify(payload));
+    return true;
+  }
+  return false;
+}
+
+wss.on("connection", (ws: WebSocket) => {
+  const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  ws.on("message", (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+
+      switch (msg.type) {
+        case "client:register": {
+          connectedClients.set(clientId, {
+            socket: ws,
+            id: clientId,
+            userId: msg.userId || clientId,
+            userName: msg.userName || "Гість",
+            avatar: msg.avatar || "",
+            currentChatId: msg.currentChatId,
+            joinedAt: Date.now(),
+          });
+
+          // Send welcome + current peer list
+          const peers = Array.from(connectedClients.values()).map((c) => ({
+            id: c.id,
+            userId: c.userId,
+            userName: c.userName,
+            avatar: c.avatar,
+            currentChatId: c.currentChatId,
+          }));
+
+          ws.send(JSON.stringify({
+            type: "client:registered",
+            clientId,
+            onlineCount: connectedClients.size,
+            peers,
+          }));
+
+          // Notify others about presence update
+          broadcast({
+            type: "presence:update",
+            onlineCount: connectedClients.size,
+            joinedPeer: {
+              id: clientId,
+              userId: msg.userId,
+              userName: msg.userName,
+            },
+          }, clientId);
+          break;
+        }
+
+        case "chat:join_room": {
+          const client = connectedClients.get(clientId);
+          if (client) {
+            client.currentChatId = msg.chatId;
+            broadcast({
+              type: "chat:user_joined_room",
+              chatId: msg.chatId,
+              userId: client.userId,
+              userName: client.userName,
+            }, clientId);
+          }
+          break;
+        }
+
+        case "chat:message": {
+          // Broadcast new message via server relay
+          broadcast({
+            type: "chat:message",
+            chatId: msg.chatId,
+            message: msg.message,
+            senderClientId: clientId,
+            transport: "server",
+          }, clientId);
+          break;
+        }
+
+        case "chat:typing": {
+          broadcast({
+            type: "chat:typing",
+            chatId: msg.chatId,
+            userId: msg.userId,
+            userName: msg.userName,
+            isTyping: msg.isTyping,
+          }, clientId);
+          break;
+        }
+
+        case "chat:reaction": {
+          broadcast({
+            type: "chat:reaction",
+            chatId: msg.chatId,
+            messageId: msg.messageId,
+            emoji: msg.emoji,
+            userId: msg.userId,
+          }, clientId);
+          break;
+        }
+
+        // WebRTC Signaling Gateway for P2P direct channels
+        case "webrtc:signal": {
+          const { targetPeerId, signalType, signalData, chatId } = msg;
+          const sender = connectedClients.get(clientId);
+
+          const payload = {
+            type: "webrtc:signal",
+            senderClientId: clientId,
+            senderUserId: sender?.userId,
+            senderName: sender?.userName,
+            targetPeerId,
+            signalType,
+            signalData,
+            chatId,
+          };
+
+          if (targetPeerId && targetPeerId !== "broadcast") {
+            const delivered = sendToPeer(targetPeerId, payload);
+            if (!delivered) {
+              // Target not found directly by ID, broadcast signal within chat room
+              broadcast(payload, clientId);
+            }
+          } else {
+            // Broadcast signaling offer / announce to all peers in same chat
+            broadcast(payload, clientId);
+          }
+          break;
+        }
+
+        case "network:ping": {
+          ws.send(JSON.stringify({
+            type: "network:pong",
+            clientTimestamp: msg.timestamp,
+            serverTimestamp: Date.now(),
+          }));
+          break;
+        }
+
+        default:
+          break;
+      }
+    } catch (err) {
+      console.error("WebSocket message parse error:", err);
+    }
+  });
+
+  ws.on("close", () => {
+    connectedClients.delete(clientId);
+    broadcast({
+      type: "presence:update",
+      onlineCount: connectedClients.size,
+      leftClientId: clientId,
+    });
+  });
+
+  ws.on("error", (err) => {
+    console.error("WebSocket error:", err);
+    connectedClients.delete(clientId);
+  });
+});
+
+// REST Network Status & STUN configuration endpoint
+app.get("/api/network/status", (req, res) => {
+  res.json({
+    status: "online",
+    transport: "hybrid-websocket-webrtc",
+    onlineClients: connectedClients.size,
+    wsPath: "/ws",
+    stunServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" },
+    ],
+    p2pSupported: true,
+  });
+});
+
+// Fallback HTTP Broadcast
+app.post("/api/network/broadcast", (req, res) => {
+  const { chatId, message, type } = req.body;
+  broadcast({
+    type: type || "chat:message",
+    chatId,
+    message,
+    transport: "server-http-fallback",
+  });
+  res.json({ success: true, clientsNotified: connectedClients.size });
+});
 
 // Lazy-initialized Gemini client
 let aiClient: GoogleGenAI | null = null;
@@ -489,8 +714,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Aura Messenger server running on http://0.0.0.0:${PORT}`);
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Aura Messenger server & WebSocket gateway running on http://0.0.0.0:${PORT}`);
   });
 }
 

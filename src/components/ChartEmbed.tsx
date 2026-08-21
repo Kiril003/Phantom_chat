@@ -42,7 +42,7 @@ export const ChartEmbed: React.FC<ChartEmbedProps> = ({ data }) => {
       <div className="w-full h-52 pt-2 bg-white rounded-xl border border-[#DFD6C5] p-2">
         <ResponsiveContainer width="100%" height="100%">
           {data.type === 'line' ? (
-            <LineChart data={data.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <LineChart data={data.data || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F0EBE1" />
               <XAxis dataKey="name" tick={{ fill: '#77847A', fontSize: 10 }} stroke="#DFD6C5" />
               <YAxis tick={{ fill: '#77847A', fontSize: 10 }} stroke="#DFD6C5" />
@@ -57,7 +57,7 @@ export const ChartEmbed: React.FC<ChartEmbedProps> = ({ data }) => {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
-              {data.keys.map((k) => (
+              {(data.keys || []).map((k) => (
                 <Line
                   key={k.key}
                   type="monotone"
@@ -70,7 +70,7 @@ export const ChartEmbed: React.FC<ChartEmbedProps> = ({ data }) => {
               ))}
             </LineChart>
           ) : (
-            <BarChart data={data.data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <BarChart data={data.data || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F0EBE1" />
               <XAxis dataKey="name" tick={{ fill: '#77847A', fontSize: 10 }} stroke="#DFD6C5" />
               <YAxis tick={{ fill: '#77847A', fontSize: 10 }} stroke="#DFD6C5" />
@@ -85,7 +85,7 @@ export const ChartEmbed: React.FC<ChartEmbedProps> = ({ data }) => {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
-              {data.keys.map((k) => (
+              {(data.keys || []).map((k) => (
                 <Bar
                   key={k.key}
                   dataKey={k.key}

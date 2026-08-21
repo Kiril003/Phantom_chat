@@ -29,10 +29,10 @@ export const MultiQuoteEmbed: React.FC<MultiQuoteEmbedProps> = ({ data }) => {
           </div>
           <div>
             <h4 className="font-bold text-xs sm:text-sm text-[#1F2521] leading-tight">
-              {data.title || 'Комбінована цитата та аналіз'}
+              {data?.title || 'Комбінована цитата та аналіз'}
             </h4>
             <span className="text-[10px] text-[#717E75]">
-              {data.quotes.length} підкріплених повідомлень
+              {(data?.quotes || []).length} підкріплених повідомлень
             </span>
           </div>
         </div>
@@ -47,7 +47,7 @@ export const MultiQuoteEmbed: React.FC<MultiQuoteEmbedProps> = ({ data }) => {
       </div>
 
       {/* Synthesis Box */}
-      {data.synthesis && (
+      {data?.synthesis && (
         <div className="p-3.5 bg-[#FAF1E6] rounded-2xl border border-[#F3DAC2] space-y-2 text-xs">
           <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#8C461A]">
             <Sparkles className="w-3.5 h-3.5 text-[#E87A42]" />
@@ -55,7 +55,7 @@ export const MultiQuoteEmbed: React.FC<MultiQuoteEmbedProps> = ({ data }) => {
           </div>
 
           <div className="space-y-1 pl-1">
-            {data.synthesis.keyPoints.map((point, idx) => (
+            {(data.synthesis.keyPoints || []).map((point, idx) => (
               <div key={idx} className="flex items-start gap-2 text-[#3D4740]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#E87A42] mt-1.5 shrink-0" />
                 <span className="leading-snug">{point}</span>
@@ -80,13 +80,13 @@ export const MultiQuoteEmbed: React.FC<MultiQuoteEmbedProps> = ({ data }) => {
           }}
           className="w-full px-3 py-2 text-left flex items-center justify-between text-xs font-semibold text-[#515E54] hover:bg-[#FAF8F3] transition-colors"
         >
-          <span>Оригінальні цитати ({data.quotes.length})</span>
+          <span>Оригінальні цитати ({(data?.quotes || []).length})</span>
           {showFullQuotes ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
 
         {showFullQuotes && (
           <div className="p-2 space-y-2 border-t border-[#EFE8DC] bg-[#FAF8F3] max-h-48 overflow-y-auto">
-            {data.quotes.map((q) => (
+            {(data?.quotes || []).map((q) => (
               <div
                 key={q.id}
                 className="p-2.5 bg-white rounded-xl border border-[#DFD6C5] text-xs space-y-1 shadow-2xs"

@@ -11,9 +11,17 @@ import {
   Check,
   Smartphone,
   Sparkles,
-  Type
+  Type,
+  Radio,
+  Lock,
+  Globe,
+  Zap,
+  Activity,
+  KeyRound
 } from 'lucide-react';
 import { soundFx } from '../utils/sound';
+import { networkEngine } from '../utils/networkEngine';
+import { TransportProtocol } from '../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -22,6 +30,7 @@ interface SettingsModalProps {
   onToggleSound: () => void;
   onExportAllData: () => void;
   onClearHistory?: () => void;
+  onOpenP2PNetworkModal?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -31,21 +40,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onToggleSound,
   onExportAllData,
   onClearHistory,
+  onOpenP2PNetworkModal,
 }) => {
-  const [activeTab, setActiveTab] = useState<'appearance' | 'notifications' | 'privacy' | 'data'>('appearance');
+  const [activeTab, setActiveTab] = useState<'appearance' | 'network' | 'notifications' | 'privacy' | 'data'>('appearance');
   const [accentColor, setAccentColor] = useState<'terracotta' | 'sage' | 'chestnut' | 'amber'>('terracotta');
   const [fontSize, setFontSize] = useState<'standard' | 'large'>('standard');
   const [desktopNotifs, setDesktopNotifs] = useState(true);
   const [readReceipts, setReadReceipts] = useState(true);
   const [lastSeenVisible, setLastSeenVisible] = useState(true);
+  const [transportMode, setTransportMode] = useState<TransportProtocol>(networkEngine.getTransportMode());
 
   if (!isOpen) return null;
 
+  const handleSetMode = (mode: TransportProtocol) => {
+    soundFx.playTap();
+    setTransportMode(mode);
+    networkEngine.setTransportMode(mode);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-[#FAF8F3] border border-[#DCD3C1] rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden select-none animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
+      <div className="bg-[#FAF8F3] border-t sm:border border-[#DCD3C1] rounded-t-3xl sm:rounded-3xl w-full max-w-lg max-h-[92dvh] sm:max-h-[85vh] flex flex-col shadow-2xl overflow-hidden select-none animate-in slide-in-from-bottom sm:zoom-in-95 duration-150 pb-[var(--sab)] sm:pb-0">
+        {/* Mobile Pull Indicator */}
+        <div className="sm:hidden pt-2.5 pb-1 flex justify-center bg-[#F5EFE4]">
+          <div className="w-12 h-1 bg-[#D5C9B8] rounded-full" />
+        </div>
+
         {/* Header */}
-        <div className="px-5 py-4 border-b border-[#E8DFD1] flex items-center justify-between bg-[#F5EFE4]">
+        <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-[#E8DFD1] flex items-center justify-between bg-[#F5EFE4]">
           <div className="flex items-center gap-2">
             <h3 className="font-extrabold text-base text-[#1F2521]">Налаштування Aura</h3>
           </div>
@@ -65,6 +87,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="px-4 py-2 bg-[#F0EAE0] border-b border-[#E2D8C7] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           {[
             { id: 'appearance', label: 'Оформлення', icon: Palette },
+            { id: 'network', label: 'Мережа & P2P', icon: Radio },
             { id: 'notifications', label: 'Сповіщення & Звук', icon: Bell },
             { id: 'privacy', label: 'Приватність', icon: Shield },
             { id: 'data', label: 'Дані & Резерв', icon: Download },
@@ -98,14 +121,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-[#445047] mb-2">
-                  Колірний акцент інтерфейсу
+                  Акцентний природний відтінок
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   {[
-                    { id: 'terracotta', label: 'Тепла теракота', color: '#E87A42' },
-                    { id: 'sage', label: 'Оливкова шавлія', color: '#528A4B' },
-                    { id: 'chestnut', label: 'Каштан та горіх', color: '#8C461A' },
-                    { id: 'amber', label: 'Золотистий бурштин', color: '#D99026' },
+                    { id: 'terracotta', label: 'Теракота', color: '#E87A42' },
+                    { id: 'sage', label: 'Шавлія', color: '#5B8C67' },
+                    { id: 'chestnut', label: 'Каштан', color: '#8A5333' },
+                    { id: 'amber', label: 'Бурштин', color: '#D97706' },
                   ].map((c) => (
                     <button
                       key={c.id}
@@ -113,17 +136,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         soundFx.playTap();
                         setAccentColor(c.id as any);
                       }}
-                      className={`p-3 rounded-2xl border flex items-center gap-2.5 transition-all ${
+                      className={`p-2.5 rounded-2xl border text-center transition-all ${
                         accentColor === c.id
                           ? 'bg-white border-[#1F2521] shadow-xs'
                           : 'bg-white/60 border-[#DFD6C5] hover:bg-white'
                       }`}
                     >
                       <span
-                        className="w-4 h-4 rounded-full shadow-2xs shrink-0"
+                        className="w-5 h-5 rounded-full mx-auto block mb-1.5 shadow-2xs"
                         style={{ backgroundColor: c.color }}
                       />
-                      <span className="text-xs font-bold text-[#1F2521]">{c.label}</span>
+                      <span className="text-[11px] font-bold text-[#1F2521] block">{c.label}</span>
                     </button>
                   ))}
                 </div>
@@ -131,7 +154,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-[#445047] mb-2">
-                  Розмір шрифту
+                  Розмір шрифту інтерфейсу
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -139,39 +162,148 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       soundFx.playTap();
                       setFontSize('standard');
                     }}
-                    className={`p-2.5 rounded-2xl text-xs font-bold border transition-all ${
+                    className={`p-3 rounded-2xl border text-left transition-all ${
                       fontSize === 'standard'
-                        ? 'bg-[#1F2521] text-white'
-                        : 'bg-white text-[#525E55] border-[#DFD6C5]'
+                        ? 'bg-white border-[#1F2521] shadow-xs'
+                        : 'bg-white/60 border-[#DFD6C5]'
                     }`}
                   >
-                    Стандартний (14px)
+                    <span className="font-extrabold text-xs text-[#1F2521] block">Стандартний (14-15px)</span>
+                    <span className="text-[11px] text-[#717E75]">Оптимальна щільність</span>
                   </button>
                   <button
                     onClick={() => {
                       soundFx.playTap();
                       setFontSize('large');
                     }}
-                    className={`p-2.5 rounded-2xl text-xs font-bold border transition-all ${
+                    className={`p-3 rounded-2xl border text-left transition-all ${
                       fontSize === 'large'
-                        ? 'bg-[#1F2521] text-white'
-                        : 'bg-white text-[#525E55] border-[#DFD6C5]'
+                        ? 'bg-white border-[#1F2521] shadow-xs'
+                        : 'bg-white/60 border-[#DFD6C5]'
                     }`}
                   >
-                    Збільшений (16px)
+                    <span className="font-extrabold text-sm text-[#1F2521] block">Збільшений (16-17px)</span>
+                    <span className="text-[11px] text-[#717E75]">Максимальна читабельність</span>
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB 2: NOTIFICATIONS & SOUND */}
+          {/* TAB 2: NETWORK & P2P PROTOCOL */}
+          {activeTab === 'network' && (
+            <div className="space-y-4">
+              <div className="p-3.5 bg-[#F6EEE2] rounded-2xl border border-[#E4D8C4] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-[#E87A42]/15 text-[#E87A42] flex items-center justify-center">
+                    <Radio className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-xs text-[#1F2521]">Гібридна P2P / Серверна архітектура</h4>
+                    <p className="text-[11px] text-[#69796F]">Прямий WebRTC тунель або хмарний релей</p>
+                  </div>
+                </div>
+                {onOpenP2PNetworkModal && (
+                  <button
+                    onClick={() => {
+                      soundFx.playTap();
+                      onClose();
+                      onOpenP2PNetworkModal();
+                    }}
+                    className="px-3 py-1.5 bg-[#1F2521] hover:bg-[#323D35] text-white rounded-xl text-xs font-bold transition-all shadow-2xs"
+                  >
+                    Термінал P2P
+                  </button>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#445047] mb-2 uppercase tracking-wider">
+                  Протокол за замовчуванням
+                </label>
+                <div className="space-y-2">
+                  {[
+                    {
+                      id: 'auto' as TransportProtocol,
+                      title: 'Автоматичний (Hybrid Smart Route)',
+                      desc: 'Прямий WebRTC тунель за наявності пірів, з безпечним підстрахуванням через WebSocket сервер.',
+                      icon: Zap,
+                      badge: 'Рекомендовано',
+                      color: 'text-[#E87A42]',
+                    },
+                    {
+                      id: 'p2p' as TransportProtocol,
+                      title: 'Тільки прямий P2P (WebRTC DataChannel)',
+                      desc: 'Шифрований прямий зв\'язок між браузерами. Жодне повідомлення не передається на сервер.',
+                      icon: Lock,
+                      badge: 'Strict E2E',
+                      color: 'text-[#10B981]',
+                    },
+                    {
+                      id: 'server' as TransportProtocol,
+                      title: 'Серверний релей (Cloud WebSocket)',
+                      desc: 'Синхронізація через сервер Aura. Гарантована доставка для великих команд.',
+                      icon: Globe,
+                      badge: 'Cloud Sync',
+                      color: 'text-[#3B82F6]',
+                    },
+                  ].map((opt) => {
+                    const Icon = opt.icon;
+                    const isSel = transportMode === opt.id;
+                    return (
+                      <div
+                        key={opt.id}
+                        onClick={() => handleSetMode(opt.id)}
+                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start justify-between gap-3 ${
+                          isSel
+                            ? 'bg-white border-[#1F2521] ring-1 ring-[#1F2521] shadow-xs'
+                            : 'bg-white/60 border-[#DFD6C5] hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`w-7 h-7 rounded-lg bg-black/5 flex items-center justify-center shrink-0 ${opt.color} mt-0.5`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h5 className="font-extrabold text-xs text-[#1F2521]">{opt.title}</h5>
+                              <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-[#FAF6EE] border border-[#DDD3BF] text-[#717E75]">
+                                {opt.badge}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-[#69786E] mt-0.5 leading-relaxed">{opt.desc}</p>
+                          </div>
+                        </div>
+                        {isSel && (
+                          <div className="w-4 h-4 rounded-full bg-[#1F2521] text-white flex items-center justify-center shrink-0 mt-1">
+                            <Check className="w-2.5 h-2.5" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="p-3 bg-white rounded-2xl border border-[#DFD6C5] space-y-1.5">
+                <span className="text-[11px] font-bold text-[#1F2521] flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-[#10B981]" />
+                  <span>Відбиток шифрування E2E вузла:</span>
+                </span>
+                <span className="font-mono text-[10.5px] text-[#69796F] block bg-[#FAF7F2] p-1.5 rounded-lg border border-[#E3D9C7] select-all">
+                  AURA:P2P:SHA256:7B:4E:91:FA:33:C9:88:E2
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: NOTIFICATIONS & SOUND */}
           {activeTab === 'notifications' && (
             <div className="space-y-3">
-              <div className="p-3.5 bg-white border border-[#DFD6C5] rounded-2xl flex items-center justify-between shadow-2xs">
+              <div className="flex items-center justify-between p-3.5 bg-white border border-[#DFD6C5] rounded-2xl">
                 <div>
-                  <p className="font-bold text-xs text-[#1F2521]">Тактильний звуковий відгук</p>
-                  <p className="text-[11px] text-[#717E75]">Звуки відправки, кліків, вибору та дзвінків</p>
+                  <p className="font-bold text-xs text-[#1F2521]">Звуковий супровід Aura</p>
+                  <p className="text-[11px] text-[#717E75]">Природні кліки, надсилання та дзвіночки</p>
                 </div>
                 <button
                   onClick={() => {
@@ -190,10 +322,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               </div>
 
-              <div className="p-3.5 bg-white border border-[#DFD6C5] rounded-2xl flex items-center justify-between shadow-2xs">
+              <div className="flex items-center justify-between p-3.5 bg-white border border-[#DFD6C5] rounded-2xl">
                 <div>
-                  <p className="font-bold text-xs text-[#1F2521]">Сповіщення на робочому столі</p>
-                  <p className="text-[11px] text-[#717E75]">Показувати спливаючі банери при нових повідомленнях</p>
+                  <p className="font-bold text-xs text-[#1F2521]">Системні сповіщення</p>
+                  <p className="text-[11px] text-[#717E75]">Показувати спливаючі банери в браузері</p>
                 </div>
                 <button
                   onClick={() => {
@@ -214,13 +346,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 3: PRIVACY */}
+          {/* TAB 4: PRIVACY */}
           {activeTab === 'privacy' && (
             <div className="space-y-3">
-              <div className="p-3.5 bg-white border border-[#DFD6C5] rounded-2xl flex items-center justify-between shadow-2xs">
+              <div className="flex items-center justify-between p-3.5 bg-white border border-[#DFD6C5] rounded-2xl">
                 <div>
                   <p className="font-bold text-xs text-[#1F2521]">Звіти про прочитання</p>
-                  <p className="text-[11px] text-[#717E75]">Співрозмовники бачать подвійні галочки</p>
+                  <p className="text-[11px] text-[#717E75]">Повідомляти співрозмовників про перегляд</p>
                 </div>
                 <button
                   onClick={() => {
@@ -239,10 +371,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               </div>
 
-              <div className="p-3.5 bg-white border border-[#DFD6C5] rounded-2xl flex items-center justify-between shadow-2xs">
+              <div className="flex items-center justify-between p-3.5 bg-white border border-[#DFD6C5] rounded-2xl">
                 <div>
-                  <p className="font-bold text-xs text-[#1F2521]">Статус онлайн та час останнього візиту</p>
-                  <p className="text-[11px] text-[#717E75]">Дозволити контактам бачити вашу активність</p>
+                  <p className="font-bold text-xs text-[#1F2521]">Статус "Був у мережі"</p>
+                  <p className="text-[11px] text-[#717E75]">Відображати час останньої активності</p>
                 </div>
                 <button
                   onClick={() => {
@@ -263,7 +395,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 4: DATA & BACKUP */}
+          {/* TAB 5: DATA & BACKUP */}
           {activeTab === 'data' && (
             <div className="space-y-3">
               <div className="p-4 bg-white border border-[#DFD6C5] rounded-2xl space-y-2 shadow-2xs">

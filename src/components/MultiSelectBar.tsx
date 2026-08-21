@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Sparkles,
   Quote,
+  Reply,
   Copy,
   Forward,
   Pin,
@@ -16,6 +17,7 @@ interface MultiSelectBarProps {
   selectedCount: number;
   onClearSelection: () => void;
   onSynthesize: () => void;
+  onReplyMultiple?: () => void;
   onCreateMultiQuote: () => void;
   onCopyAll: () => void;
   onForward: () => void;
@@ -26,6 +28,7 @@ export const MultiSelectBar: React.FC<MultiSelectBarProps> = ({
   selectedCount,
   onClearSelection,
   onSynthesize,
+  onReplyMultiple,
   onCreateMultiQuote,
   onCopyAll,
   onForward,
@@ -41,7 +44,22 @@ export const MultiSelectBar: React.FC<MultiSelectBarProps> = ({
         <span>{selectedCount} обрано</span>
       </div>
 
-      {/* 1. AI Synthesize Button */}
+      {/* 1. Reply to multiple / Multi-Quote Reply */}
+      {onReplyMultiple && (
+        <button
+          onClick={() => {
+            soundFx.playTap();
+            onReplyMultiple();
+          }}
+          className="px-3 py-1.5 bg-[#E87A42] hover:bg-[#D46B34] text-white rounded-xl font-bold flex items-center gap-1.5 transition-colors shrink-0 shadow-2xs"
+          title="Відповісти / цитувати обрані повідомлення"
+        >
+          <Reply className="w-3.5 h-3.5" />
+          <span>Відповісти ({selectedCount})</span>
+        </button>
+      )}
+
+      {/* 2. AI Synthesize Button */}
       <button
         onClick={() => {
           soundFx.playChime();
@@ -54,7 +72,7 @@ export const MultiSelectBar: React.FC<MultiSelectBarProps> = ({
         <span className="hidden sm:inline">AI Синтез ✦</span>
       </button>
 
-      {/* 2. Calendar Sync from Selection */}
+      {/* 3. Calendar Sync from Selection */}
       {onCalendarSync && (
         <button
           onClick={() => {
@@ -68,19 +86,6 @@ export const MultiSelectBar: React.FC<MultiSelectBarProps> = ({
           <span className="hidden md:inline">Подія</span>
         </button>
       )}
-
-      {/* 3. Create Multi-Quote */}
-      <button
-        onClick={() => {
-          soundFx.playTap();
-          onCreateMultiQuote();
-        }}
-        className="px-2.5 py-1.5 bg-white hover:bg-[#F2ECE0] text-[#3F4A42] border border-[#DFD6C5] rounded-xl font-semibold flex items-center gap-1 transition-colors"
-        title="Створити мульти-цитату"
-      >
-        <Quote className="w-3.5 h-3.5 text-[#E87A42]" />
-        <span className="hidden md:inline">Цитата</span>
-      </button>
 
       {/* 4. Copy All */}
       <button

@@ -131,6 +131,11 @@ class SoundEffectsManager {
       // ignore
     }
   }
+
+  // Celebratory sound for confetti & milestones
+  playConfetti() {
+    this.playChime();
+  }
 }
 
 export const soundFx = new SoundEffectsManager();

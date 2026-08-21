@@ -172,25 +172,35 @@ export const GroupDetailsDrawer: React.FC<GroupDetailsDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[440px] bg-[#FAF8F3] border-l border-[#E2D9C8] shadow-2xl flex flex-col select-none animate-in slide-in-from-right duration-200">
-      {/* 1. Header Bar */}
-      <div className="p-4 border-b border-[#E8DFD1] flex items-center justify-between bg-[#F5EFE4] shrink-0">
-        <div className="flex items-center gap-2">
-          <h3 className="font-extrabold text-sm text-[#1F2521]">Керування простором</h3>
-          <span className="px-2 py-0.5 bg-[#FCE7D8] text-[#8C461A] text-[10px] font-extrabold rounded-md uppercase border border-[#F4C8AB]">
-            {chatCircle}
-          </span>
+    <>
+      {/* Mobile Backdrop */}
+      <div 
+        onClick={() => {
+          soundFx.playTap();
+          onClose();
+        }}
+        className="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 sm:hidden animate-in fade-in duration-150"
+      />
+
+      <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[440px] bg-[#FAF8F3] border-l border-[#E2D9C8] shadow-2xl flex flex-col select-none animate-in slide-in-from-right duration-200 pb-[var(--sab)] sm:pb-0">
+        {/* 1. Header Bar */}
+        <div className="px-4 py-3.5 pt-[calc(var(--sat)+0.75rem)] sm:pt-4 border-b border-[#E8DFD1] flex items-center justify-between bg-[#F5EFE4] shrink-0">
+          <div className="flex items-center gap-2">
+            <h3 className="font-extrabold text-sm text-[#1F2521]">Керування простором</h3>
+            <span className="px-2 py-0.5 bg-[#FCE7D8] text-[#8C461A] text-[10px] font-extrabold rounded-md uppercase border border-[#F4C8AB]">
+              {chatCircle}
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              soundFx.playTap();
+              onClose();
+            }}
+            className="p-1.5 text-[#717E75] hover:text-[#1F2521] hover:bg-[#EBE2D3] rounded-xl transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <button
-          onClick={() => {
-            soundFx.playTap();
-            onClose();
-          }}
-          className="p-1.5 text-[#717E75] hover:text-[#1F2521] hover:bg-[#EBE2D3] rounded-xl transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
 
       {/* 2. Chat Overview Profile Hero */}
       <div className="p-4 border-b border-[#E8DFD1] bg-[#FAF8F3] shrink-0 space-y-3">
@@ -814,5 +824,6 @@ export const GroupDetailsDrawer: React.FC<GroupDetailsDrawerProps> = ({
         )}
       </div>
     </div>
+    </>
   );
 };
